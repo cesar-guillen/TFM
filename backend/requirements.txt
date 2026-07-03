@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic-settings==2.7.1
+pymupdf==1.28.0
+pymupdf4llm==1.28.0
+
+# Declared for upcoming pipeline steps (retrieval / KB), not yet wired up
+chromadb==0.6.3
+rank_bm25==0.2.2
+httpx==0.28.1
