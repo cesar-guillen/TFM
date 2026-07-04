@@ -11,9 +11,10 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture/pipeline description and de
 This is an early scaffold. What works end-to-end today:
 
 - `POST /api/ingest` — upload a PDF, get back its Markdown conversion (via `pymupdf4llm`).
+- `app.attack.build_kb` — one-time offline builder that downloads the Enterprise ATT&CK STIX bundle, extracts the ~700 active techniques, embeds them via Ollama, and indexes them into a Chroma collection. See CLAUDE.md for the command.
 - Frontend shell with a working upload panel, and placeholder Matrix/Chat panels.
 
-Not implemented yet: chunking, hybrid (BM25 + dense) retrieval, the ATT&CK knowledge base, LLM-based technique mapping, and aggregation — i.e. pipeline stages 3–7 in CLAUDE.md. `/api/chat` and `/api/matrix` are stubs.
+Not implemented yet: chunking and hybrid (BM25 + dense) retrieval against the report, LLM-based technique mapping, and aggregation — i.e. pipeline stages 3, 4, 6, 7 in CLAUDE.md. `/api/chat` and `/api/matrix` are stubs.
 
 ## Stack
 
@@ -32,6 +33,7 @@ backend/
     core/config.py     Settings (env vars)
     api/routes/         ingest.py (real), chat.py (stub), matrix.py (stub)
     ingest/             pdf_to_markdown.py — pymupdf4llm wrapper
+    attack/             ATT&CK knowledge base builder (stix_source.py, techniques.py, embeddings.py, build_kb.py)
 frontend/
   src/
     App.tsx             3-pane shell
@@ -40,6 +42,7 @@ frontend/
 data/
   uploads/              uploaded PDFs (gitignored)
   chroma/                vector store persistence (gitignored)
+  attack/                cached ATT&CK STIX bundle (gitignored)
 docker-compose.yml
 .env.example
 ```
@@ -64,6 +67,12 @@ docker compose exec ollama ollama pull nomic-embed-text
 
 Uploaded reports persist under `./data/uploads/`; the vector store persists under `./data/chroma/`.
 
+Build the ATT&CK knowledge base (one-time, offline — see CLAUDE.md for details):
+
+```
+docker compose exec backend python -m app.attack.build_kb
+```
+
 **Note on `OLLAMA_HOST`**: inside `docker-compose.yml` this is set to `http://ollama:11434` — `ollama` is the Compose service name, resolved by Docker's internal DNS to that container's private IP on the local Compose network. This is still entirely local (no traffic leaves the host); it's just how containers address each other instead of `localhost`, since each container has its own network namespace.
 
 ### Host prerequisites
@@ -73,4 +82,4 @@ Uploaded reports persist under `./data/uploads/`; the vector store persists unde
 
 ## Next steps
 
-Per the pipeline in CLAUDE.md, the next stages to build are chunking (stage 3) and/or the ATT&CK knowledge base builder (stage 5).
+Per the pipeline in CLAUDE.md, the next stage to build is chunking (stage 3) and hybrid retrieval (stage 4) against the report, now that the ATT&CK knowledge base (stage 5) is in place.

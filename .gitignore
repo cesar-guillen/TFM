@@ -15,3 +15,5 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/chroma/*
 !data/chroma/.gitkeep
+data/attack/*
+!data/attack/.gitkeep

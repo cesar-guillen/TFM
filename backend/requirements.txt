@@ -5,7 +5,8 @@ pydantic-settings==2.7.1
 pymupdf==1.28.0
 pymupdf4llm==1.28.0
 
-# Declared for upcoming pipeline steps (retrieval / KB), not yet wired up
+# chromadb + httpx: used by app.attack (ATT&CK knowledge base builder)
+# rank_bm25: declared for upcoming hybrid retrieval (stage 4), not yet wired up
 chromadb==0.6.3
 rank_bm25==0.2.2
 httpx==0.28.1
