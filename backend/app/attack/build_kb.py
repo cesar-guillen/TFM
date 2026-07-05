@@ -4,12 +4,12 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import chromadb
 import httpx
 
 from app.attack.embeddings import embed_text
 from app.attack.stix_source import ensure_enterprise_attack_stix
 from app.attack.techniques import Technique, load_techniques
+from app.core.chroma import get_chroma_client
 from app.core.config import settings
 
 # Bundled, pre-embedded copy of the KB (committed to git) so a fresh checkout
@@ -115,7 +115,7 @@ def _export_collection_to_seed(collection, path: str) -> None:
 
 
 def build_kb(refresh: bool = False) -> None:
-    client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+    client = get_chroma_client()
     collection = client.get_or_create_collection(settings.attack_collection)
 
     if not refresh and collection.count() > 0:

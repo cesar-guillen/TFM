@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { Catalog, CatalogTechnique, LayerState, TechniqueSummary } from "../types/attack";
 import { cssGradient, readableTextColor, scoreToColor, useHeatTheme, type HeatTheme } from "../theme/heatThemes";
 
@@ -37,10 +37,53 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
   const [selected, setSelected] = useState<string | null>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [tacticMenu, setTacticMenu] = useState<{ id: string; name: string; rect: DOMRect } | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const editable = Boolean(onLayerChange);
   const normalizedQuery = query.trim().toLowerCase();
   const mappedCount = Object.keys(layer).length;
+
+  // Side-scroll arrows for the full matrix (the overview preview fits its
+  // full width with no side-scroll — see .attack-matrix--overview).
+  const syncScrollArrows = useCallback(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(el.scrollLeft > 1);
+    setCanScrollRight(el.scrollLeft < maxScroll - 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (overview) return;
+    syncScrollArrows();
+  }, [overview, syncScrollArrows, hiddenTactics, normalizedQuery]);
+
+  useEffect(() => {
+    if (overview) return;
+    const el = gridRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", syncScrollArrows, { passive: true });
+    const ro = new ResizeObserver(syncScrollArrows);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", syncScrollArrows);
+      ro.disconnect();
+    };
+  }, [overview, syncScrollArrows]);
+
+  // Scroll to an explicit, clamped target rather than a relative scrollBy —
+  // clicking a few times fast can't overshoot past the last column and
+  // "leave the matrix behind" this way, since every click recomputes the
+  // bound fresh instead of compounding on top of a possibly still-animating
+  // position.
+  function pageGrid(direction: 1 | -1) {
+    const el = gridRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const target = Math.max(0, Math.min(maxScroll, el.scrollLeft + direction * el.clientWidth * 0.8));
+    el.scrollTo({ left: target, behavior: "smooth" });
+  }
 
   // Close the editor popover when the grid scrolls (the anchored cell moves).
   useEffect(() => {
@@ -101,6 +144,16 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
   const visibleTactics = catalog.tactics.filter((t) => !hiddenTactics.has(t.id));
   const hiddenList = catalog.tactics.filter((t) => hiddenTactics.has(t.id));
 
+  // Every technique that owns sub-techniques — used by the expand/collapse-all toggle.
+  const expandableIds = catalog.tactics.flatMap((t) =>
+    t.techniques.filter((tech) => tech.subtechniques.length > 0).map((tech) => tech.id)
+  );
+  const allExpanded = expandableIds.length > 0 && expandableIds.every((id) => expanded.has(id));
+
+  function toggleExpandAll() {
+    setExpanded(allExpanded ? new Set() : new Set(expandableIds));
+  }
+
   return (
     <div
       className={`attack-matrix${compact ? " attack-matrix--compact" : ""}${overview ? " attack-matrix--overview" : ""}`}
@@ -119,6 +172,11 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
           <span className="attack-matrix__legend-swatch" style={{ background: cssGradient(theme) }} />
           <span>100</span>
         </div>
+        {expandableIds.length > 0 && (
+          <button className="btn attack-matrix__expand-all" onClick={toggleExpandAll}>
+            {allExpanded ? "Collapse all" : "Expand all"}
+          </button>
+        )}
         {hiddenList.length > 0 && (
           <div className="attack-matrix__hidden">
             <button className="btn attack-matrix__hidden-btn" onClick={() => setShowHiddenList((v) => !v)}>
@@ -159,7 +217,7 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
           return (
             <div className="attack-matrix__column" key={tactic.id}>
               {overview ? (
-                <div className="attack-matrix__column-header attack-matrix__column-header--static">
+                <div className="attack-matrix__column-header attack-matrix__column-header--static" title={tactic.name}>
                   <span>{tactic.name}</span>
                   <span className="attack-matrix__column-count">{tactic.techniques.length}</span>
                 </div>
@@ -181,7 +239,6 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
                     layer={layer}
                     theme={theme}
                     editable={editable}
-                    overview={overview}
                     selected={selected}
                     forceExpand={Boolean(normalizedQuery) && tech.subtechniques.some((s) => matchesQuery(s, normalizedQuery))}
                     expanded={expanded.has(tech.id)}
@@ -195,6 +252,27 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
           );
         })}
       </div>
+
+      {!overview && (
+        <>
+          <button
+            className="attack-matrix__arrow attack-matrix__arrow--left"
+            onClick={() => pageGrid(-1)}
+            disabled={!canScrollLeft}
+            aria-label="Scroll matrix left"
+          >
+            ‹
+          </button>
+          <button
+            className="attack-matrix__arrow attack-matrix__arrow--right"
+            onClick={() => pageGrid(1)}
+            disabled={!canScrollRight}
+            aria-label="Scroll matrix right"
+          >
+            ›
+          </button>
+        </>
+      )}
 
       {tacticMenu && (
         <AnchoredPopover anchorRect={tacticMenu.rect} onClose={() => setTacticMenu(null)} width={180}>
@@ -225,7 +303,6 @@ interface TechniqueGroupProps {
   layer: LayerState;
   theme: HeatTheme;
   editable: boolean;
-  overview: boolean;
   selected: string | null;
   expanded: boolean;
   forceExpand: boolean;
@@ -239,7 +316,6 @@ function TechniqueGroup({
   layer,
   theme,
   editable,
-  overview,
   selected,
   expanded,
   forceExpand,
@@ -248,7 +324,7 @@ function TechniqueGroup({
   query,
 }: TechniqueGroupProps) {
   const hasSubtechniques = tech.subtechniques.length > 0;
-  const isExpanded = !overview && (expanded || forceExpand);
+  const isExpanded = expanded || forceExpand;
   const visibleSubs = tech.subtechniques.filter((s) => matchesQuery(s, query));
 
   return (
@@ -264,7 +340,7 @@ function TechniqueGroup({
         onOpenEditor={onOpenEditor}
         subCount={hasSubtechniques ? tech.subtechniques.length : undefined}
         expanded={hasSubtechniques ? isExpanded : undefined}
-        onToggleExpand={hasSubtechniques && !overview ? onToggleExpand : undefined}
+        onToggleExpand={hasSubtechniques ? onToggleExpand : undefined}
       />
       {isExpanded && hasSubtechniques && (
         <div className="attack-matrix__subgroup">
@@ -317,12 +393,12 @@ function TechniqueCell({
   expanded,
   onToggleExpand,
 }: TechniqueCellProps) {
-  const isParent = onToggleExpand !== undefined;
+  const hasSubs = onToggleExpand !== undefined;
   const classes = [
     "attack-matrix__cell",
     sub && "attack-matrix__cell--sub",
     isSelected && "attack-matrix__cell--selected",
-    (editable || isParent) && "attack-matrix__cell--interactive",
+    (editable || hasSubs) && "attack-matrix__cell--interactive",
     entry && "attack-matrix__cell--scored",
   ]
     .filter(Boolean)
@@ -332,13 +408,15 @@ function TechniqueCell({
     ? { background: scoreToColor(entry.score, theme), color: readableTextColor(entry.score, theme) }
     : undefined;
 
-  // Primary click: parents expand/collapse; leaves & sub-techniques open the editor.
+  // Primary click: when editable, every cell (parents included) opens the editor —
+  // expand/collapse lives on the caret button. When not editable (dashboard
+  // preview), clicking a parent expands it so sub-techniques are still viewable.
   function handleClick(e: MouseEvent<HTMLDivElement>) {
-    if (isParent) onToggleExpand!();
-    else if (editable) onOpenEditor(id, e.currentTarget);
+    if (editable) onOpenEditor(id, e.currentTarget);
+    else if (hasSubs) onToggleExpand!();
   }
 
-  const interactive = editable || isParent;
+  const interactive = editable || hasSubs;
 
   return (
     <div
@@ -353,30 +431,32 @@ function TechniqueCell({
           ? (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                if (isParent) onToggleExpand!();
-                else onOpenEditor(id, e.currentTarget);
+                if (editable) onOpenEditor(id, e.currentTarget);
+                else if (hasSubs) onToggleExpand!();
               }
             }
           : undefined
       }
     >
       <div className="attack-matrix__cell-meta">
-        {isParent && <span className={`attack-matrix__caret${expanded ? " attack-matrix__caret--open" : ""}`}>▸</span>}
+        {hasSubs && (
+          <button
+            type="button"
+            className={`attack-matrix__caret${expanded ? " attack-matrix__caret--open" : ""}`}
+            title={expanded ? "Collapse sub-techniques" : "Expand sub-techniques"}
+            aria-label={expanded ? "Collapse sub-techniques" : "Expand sub-techniques"}
+            aria-expanded={expanded}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand!();
+            }}
+          >
+            ▸
+          </button>
+        )}
         <span className="attack-matrix__cell-id">{id}</span>
         {subCount !== undefined && <span className="attack-matrix__sub-count">{subCount}</span>}
         <span className="attack-matrix__cell-spacer" />
-        {isParent && editable && (
-          <button
-            className="attack-matrix__cell-edit"
-            title="Score this technique"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenEditor(id, e.currentTarget.closest(".attack-matrix__cell") as HTMLElement);
-            }}
-          >
-            ✎
-          </button>
-        )}
         <a
           className="attack-matrix__cell-link"
           href={url}

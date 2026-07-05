@@ -1,18 +1,21 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import ChatPanel from "../components/ChatPanel";
+import type { IngestStarted } from "../api/client";
 import MatrixOverview from "../components/MatrixOverview";
+import ProgressPanel from "../components/ProgressPanel";
 import ReportPanel from "../components/ReportPanel";
-import UploadPanel, { type IngestResult } from "../components/UploadPanel";
+import UploadPanel from "../components/UploadPanel";
 import { useAttackData } from "../hooks/useAttackData";
+import { useIngestJob } from "../hooks/useIngestJob";
 import { layerToState } from "../types/attack";
 
 export default function DashboardPage() {
-  const [report, setReport] = useState<IngestResult | null>(null);
+  const [started, setStarted] = useState<IngestStarted | null>(null);
+  const job = useIngestJob(started?.report_id ?? null);
   const { catalog, layer, loading, error } = useAttackData();
 
   // Before the first report is uploaded: just the upload window, centered.
-  if (!report) {
+  if (!started) {
     return (
       <div className="dashboard-hero">
         <div className="dashboard-hero__card">
@@ -20,13 +23,15 @@ export default function DashboardPage() {
           <p className="dashboard-hero__subtitle">
             Drop an incident report, pentest result, or security policy PDF to generate its ATT&amp;CK matrix.
           </p>
-          <UploadPanel variant="hero" onUploaded={setReport} />
+          <UploadPanel variant="hero" onStarted={setStarted} />
         </div>
       </div>
     );
   }
 
-  // After upload: matrix (top ~70%, scaled to fit) + chat & report (~30%).
+  // As soon as an upload starts (not once it finishes): matrix (top ~70%) +
+  // ingest progress & report (~30%), so the user sees the pipeline actually
+  // moving instead of staring at a spinner for the ~100s+ embedding takes.
   return (
     <div className="dashboard-loaded">
       <section className="dashboard-loaded__matrix">
@@ -53,11 +58,11 @@ export default function DashboardPage() {
       </section>
 
       <section className="dashboard-loaded__bottom">
-        <div className="dashboard-loaded__chat">
-          <ChatPanel />
+        <div className="dashboard-loaded__progress">
+          <ProgressPanel job={job} />
         </div>
         <div className="dashboard-loaded__report">
-          <ReportPanel report={report} onUploaded={setReport} />
+          <ReportPanel filename={started.filename} job={job} onStarted={setStarted} />
         </div>
       </section>
     </div>

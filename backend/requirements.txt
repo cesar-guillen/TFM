@@ -5,7 +5,8 @@ pydantic-settings==2.7.1
 pymupdf==1.28.0
 pymupdf4llm==1.28.0
 
-# chromadb + httpx: used by app.attack (ATT&CK knowledge base builder)
+# chromadb + httpx: ATT&CK KB build/query (app.attack), report chunk indexing
+# (app.ingest.indexing) and dense retrieval (app.retrieval)
 # rank_bm25: declared for upcoming hybrid retrieval (stage 4), not yet wired up
 chromadb==0.6.3
 rank_bm25==0.2.2

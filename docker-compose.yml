@@ -24,6 +24,12 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    # npm install (not just the image's build-time `npm ci`) runs on every
+    # container start: /app/node_modules is an anonymous volume that outlives
+    # `docker compose down`/`up` and even an image rebuild, so it silently goes
+    # stale whenever package.json changes — this keeps it self-healing instead
+    # of requiring a manual `npm install` inside the container.
+    command: sh -c "npm install && npm run dev"
     depends_on:
       - backend
 

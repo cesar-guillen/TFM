@@ -196,6 +196,7 @@ body {
 }
 
 .attack-matrix {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -447,29 +448,6 @@ body {
   overflow-wrap: break-word; /* full name, wraps across the whole cell width */
 }
 
-.attack-matrix__cell-edit {
-  border: none;
-  background: none;
-  color: var(--text-faint);
-  cursor: pointer;
-  font-size: 0.72rem;
-  line-height: 1;
-  padding: 0;
-  opacity: 0;
-  transition: opacity 0.12s ease, color 0.12s ease;
-  flex-shrink: 0;
-}
-
-.attack-matrix__cell-edit:hover {
-  color: var(--accent-strong);
-}
-
-.attack-matrix__cell:hover .attack-matrix__cell-edit,
-.attack-matrix__cell:focus-within .attack-matrix__cell-edit,
-.attack-matrix__cell--scored .attack-matrix__cell-edit {
-  opacity: 0.85;
-}
-
 /* Sub-technique cluster: indented under the parent with a connector rail */
 .attack-matrix__subgroup {
   display: flex;
@@ -485,13 +463,22 @@ body {
   background: var(--bg-panel);
 }
 
-/* Rotating caret makes the expand state obvious */
+/* Rotating caret button: the dedicated expand/collapse control (clicking the
+   rest of an editable cell opens the editor, so expand lives here). */
 .attack-matrix__caret {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
   color: var(--text-dim);
   font-size: 0.7rem;
   line-height: 1;
   flex-shrink: 0;
-  transition: transform 0.12s ease;
+  transition: transform 0.12s ease, color 0.12s ease;
+}
+
+.attack-matrix__caret:hover {
+  color: var(--accent-strong);
 }
 
 .attack-matrix__cell--scored .attack-matrix__caret {
@@ -797,36 +784,98 @@ body {
   line-height: 1;
 }
 
-/* ── Overview (scaled-to-fit) matrix ─────────────────────────────────────── */
+/* ── Overview (dashboard preview) matrix ─────────────────────────────────── */
 
+/* Dashboard preview: fills the available width exactly — columns share it
+   equally, so all 15 tactics fit without side-scrolling. Only the vertical
+   axis scrolls (columns run their full natural height). */
 .attack-matrix--overview {
   height: auto;
-  width: max-content;
+  width: 100%;
 }
 
 .attack-matrix--overview .attack-matrix__grid {
   overflow: visible;
   flex: initial;
   padding: 0;
+  gap: 4px;
+}
+
+.attack-matrix--overview .attack-matrix__column {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .attack-matrix--overview .attack-matrix__column-header--static {
   cursor: default;
-  position: static;
+}
+
+/* Narrower columns than the full matrix, so text is tuned down a notch to match. */
+.attack-matrix--overview .attack-matrix__column-header {
+  font-size: 0.64rem;
+  padding: 0.4rem 0.45rem;
+}
+
+.attack-matrix--overview .attack-matrix__cell {
+  font-size: 0.68rem;
+  padding: 0.3rem 0.35rem;
 }
 
 .matrix-overview {
-  position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  min-height: 0;
 }
 
-.matrix-overview__content {
+.matrix-overview__scroll {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Floating sideways-scroll arrows for the full (non-overview) matrix page —
+   the dashboard preview fits its full width with no side-scroll, so these
+   only ever render there. Pinned to the bottom corners of the grid. */
+.attack-matrix__arrow {
   position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: top left;
+  bottom: 0.6rem;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  opacity: 0.9;
+  transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.attack-matrix__arrow:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.attack-matrix__arrow:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.attack-matrix__arrow--left {
+  left: 0.6rem;
+}
+
+.attack-matrix__arrow--right {
+  right: 0.6rem;
 }
 
 /* ── Upload dropzone (hero + compact) ────────────────────────────────────── */
@@ -951,7 +1000,7 @@ body {
   display: flex;
 }
 
-.dashboard-loaded__chat {
+.dashboard-loaded__progress {
   flex: 1.6;
   min-width: 0;
   display: flex;
@@ -1015,4 +1064,112 @@ body {
   line-height: 1.5;
   font-family: var(--font-mono);
   color: var(--text-dim);
+}
+
+/* ── Ingest progress (bottom-left, replaces the unused chat panel) ──────── */
+
+.progress-steps {
+  display: flex;
+  flex-direction: column;
+}
+
+.progress-step {
+  position: relative;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 0 1.25rem;
+}
+
+.progress-step:last-child {
+  padding-bottom: 0;
+}
+
+.progress-step::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 15px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--border-soft);
+}
+
+.progress-step:last-child::before {
+  display: none;
+}
+
+.progress-step__dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+.progress-step--done .progress-step__dot {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.progress-step--active .progress-step__dot {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .progress-step--active .progress-step__dot {
+    animation: progress-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes progress-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+}
+
+.progress-step__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.progress-step__label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+.progress-step--active .progress-step__label,
+.progress-step--done .progress-step__label {
+  color: var(--text);
+}
+
+.progress-step__bar {
+  margin-top: 0.55rem;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.progress-step__bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.progress-step__meta {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
 }

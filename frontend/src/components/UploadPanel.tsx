@@ -1,17 +1,12 @@
 import { useRef, useState } from "react";
-import { ingestPdf } from "../api/client";
-
-export interface IngestResult {
-  filename: string;
-  markdown: string;
-}
+import { ingestPdf, type IngestStarted } from "../api/client";
 
 interface UploadPanelProps {
-  onUploaded: (result: IngestResult) => void;
+  onStarted: (result: IngestStarted) => void;
   variant?: "hero" | "compact";
 }
 
-export default function UploadPanel({ onUploaded, variant = "hero" }: UploadPanelProps) {
+export default function UploadPanel({ onStarted, variant = "hero" }: UploadPanelProps) {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -25,7 +20,7 @@ export default function UploadPanel({ onUploaded, variant = "hero" }: UploadPane
     setError("");
     try {
       const result = await ingestPdf(file);
-      onUploaded(result);
+      onStarted(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -90,8 +85,8 @@ export default function UploadPanel({ onUploaded, variant = "hero" }: UploadPane
 
       {loading && (
         <div className="uploader__status">
-          <span className="badge">Parsing</span>
-          Extracting text from PDF…
+          <span className="badge">Uploading</span>
+          Sending to the server…
         </div>
       )}
 
