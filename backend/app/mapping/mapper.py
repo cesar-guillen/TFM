@@ -47,6 +47,18 @@ class ChunkMapping:
     evidence: str
 
 
+def _normalize(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def _evidence_in_chunk(evidence: str, chunk: str) -> bool:
+    """Whitespace/case-insensitive containment: the quote must actually occur
+    in the excerpt. Catches a small model 'quoting' a candidate's description
+    instead of the report (observed with llama3.2:3b: it returned a technique's
+    own description text as evidence for a technique the chunk never showed)."""
+    return bool(evidence) and _normalize(evidence) in _normalize(chunk)
+
+
 def _response_schema(candidate_ids: list[str]) -> dict:
     """Schema for one chunk's verdict; technique_id is an enum of this chunk's
     candidates, so the constrained decoder can't invent an id."""
@@ -96,8 +108,8 @@ def _chunk_prompt(chunk_text: str, candidates: list[TechniqueMatch], description
         "Candidate ATT&CK techniques (the only valid choices):\n"
         f"{_candidate_block(candidates, descriptions)}\n\n"
         "Which candidates does the excerpt give concrete evidence for? For each, "
-        "quote the exact phrase from the excerpt that evidences it. Return an "
-        "empty list if none apply."
+        "quote the shortest phrase from the excerpt (at most ~12 words) that "
+        "evidences it. Return an empty list if none apply."
     )
 
 
@@ -141,6 +153,8 @@ def map_report(report_id: str, on_progress: ProgressCallback | None = None) -> l
                 tid = m.get("technique_id")
                 if tid not in by_id:  # schema enum should prevent this; drop if not
                     continue
+                if not _evidence_in_chunk(m.get("evidence") or "", chunk_text[chunk_id]):
+                    continue  # fabricated/paraphrased "quote" — not grounded, drop it
                 mappings.append(
                     ChunkMapping(
                         chunk_id=chunk_id,
