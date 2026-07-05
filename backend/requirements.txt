@@ -7,7 +7,7 @@ pymupdf4llm==1.28.0
 
 # chromadb + httpx: ATT&CK KB build/query (app.attack), report chunk indexing
 # (app.ingest.indexing) and dense retrieval (app.retrieval)
-# rank_bm25: declared for upcoming hybrid retrieval (stage 4), not yet wired up
+# rank_bm25: BM25 keyword half of hybrid retrieval (app.retrieval.bm25)
 chromadb==0.6.3
 rank_bm25==0.2.2
 httpx==0.28.1

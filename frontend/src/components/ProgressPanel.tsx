@@ -1,7 +1,10 @@
-import type { IngestStatus, IngestStatusValue } from "../api/client";
+import type { IngestStatus, IngestStatusValue, MappingStatus } from "../api/client";
 
 interface ProgressPanelProps {
   job: IngestStatus | null;
+  mappingJob: MappingStatus | null;
+  onGenerate: () => void;
+  generateDisabled?: boolean;
 }
 
 const STEPS: { key: IngestStatusValue; label: string }[] = [
@@ -13,7 +16,73 @@ const STEPS: { key: IngestStatusValue; label: string }[] = [
 
 const STEP_ORDER = STEPS.map((s) => s.key);
 
-export default function ProgressPanel({ job }: ProgressPanelProps) {
+const MAPPING_LABELS: Record<MappingStatus["status"], string> = {
+  retrieving: "Retrieving candidate techniques…",
+  mapping: "Mapping chunks with the LLM…",
+  aggregating: "Aggregating techniques…",
+  done: "Matrix generated",
+  error: "Mapping failed",
+};
+
+function MappingSection({
+  job,
+  mappingJob,
+  onGenerate,
+  generateDisabled,
+}: ProgressPanelProps) {
+  // Only reachable once ingest is done; offer the button, or show job progress.
+  if (!mappingJob) {
+    return (
+      <div className="mapping-section">
+        <button className="btn btn-primary" onClick={onGenerate} disabled={generateDisabled}>
+          Generate ATT&amp;CK matrix
+        </button>
+        <p className="mapping-section__hint">
+          Maps each indexed chunk to techniques with the local LLM. This takes a while on CPU — progress shows per
+          chunk.
+        </p>
+      </div>
+    );
+  }
+
+  if (mappingJob.status === "error") {
+    return (
+      <div className="mapping-section">
+        <span className="badge badge-danger">Failed</span>
+        <p className="mapping-section__hint">{mappingJob.error}</p>
+        <button className="btn" onClick={onGenerate}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const pct = mappingJob.chunk_count > 0 ? Math.round((mappingJob.chunks_mapped / mappingJob.chunk_count) * 100) : 0;
+  return (
+    <div className="mapping-section">
+      <div className="mapping-section__status">
+        <span className={`badge${mappingJob.status === "done" ? "" : " badge-accent"}`}>
+          {MAPPING_LABELS[mappingJob.status]}
+        </span>
+        {mappingJob.status === "done" && mappingJob.layer && (
+          <span className="mapping-section__count">{mappingJob.layer.techniques.length} techniques</span>
+        )}
+      </div>
+      {(mappingJob.status === "mapping" || mappingJob.status === "aggregating") && (
+        <>
+          <div className="progress-step__bar">
+            <div className="progress-step__bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="progress-step__meta">
+            {mappingJob.chunks_mapped} / {mappingJob.chunk_count} chunks mapped
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function ProgressPanel({ job, mappingJob, onGenerate, generateDisabled }: ProgressPanelProps) {
   if (!job) {
     return (
       <>
@@ -85,6 +154,9 @@ export default function ProgressPanel({ job }: ProgressPanelProps) {
             );
           })}
         </div>
+        {job.status === "done" && (
+          <MappingSection job={job} mappingJob={mappingJob} onGenerate={onGenerate} generateDisabled={generateDisabled} />
+        )}
       </div>
     </>
   );

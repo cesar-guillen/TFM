@@ -1173,3 +1173,40 @@ body {
   color: var(--text-faint);
   font-family: var(--font-mono);
 }
+
+/* LLM mapping section: appended below the ingest steps once indexing is done */
+.mapping-section {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.mapping-section__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.mapping-section__status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mapping-section__count {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.badge-accent {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.mapping-section .progress-step__bar {
+  width: 100%;
+}

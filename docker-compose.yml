@@ -41,7 +41,7 @@ services:
       # Lets Ollama actually process embedding requests concurrently instead of
       # queueing them one at a time behind a single execution slot; matches
       # EMBED_WORKERS in app.attack.build_kb.
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
     volumes:
       - ollama_models:/root/.ollama
 

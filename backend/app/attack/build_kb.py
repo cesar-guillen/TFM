@@ -9,7 +9,7 @@ import httpx
 from app.attack.embeddings import embed_text
 from app.attack.stix_source import ensure_enterprise_attack_stix
 from app.attack.techniques import Technique, load_techniques
-from app.core.chroma import get_chroma_client
+from app.core.chroma import COSINE_SPACE, get_chroma_client
 from app.core.config import settings
 
 # Bundled, pre-embedded copy of the KB (committed to git) so a fresh checkout
@@ -116,7 +116,20 @@ def _export_collection_to_seed(collection, path: str) -> None:
 
 def build_kb(refresh: bool = False) -> None:
     client = get_chroma_client()
-    collection = client.get_or_create_collection(settings.attack_collection)
+    collection = client.get_or_create_collection(settings.attack_collection, metadata=COSINE_SPACE)
+
+    # Migrate a collection built before the cosine-space change: Chroma can't
+    # change a collection's distance function in place, so drop and rebuild.
+    # The stored vectors themselves are reusable as-is (cosine ignores the
+    # magnitude difference between legacy-unnormalized and normalized vectors),
+    # but on the seed path a rebuild is instant anyway.
+    if (collection.metadata or {}).get("hnsw:space", "l2") != "cosine":
+        print(
+            f"Collection '{settings.attack_collection}' uses pre-migration L2 distance — "
+            "recreating it with cosine distance."
+        )
+        client.delete_collection(settings.attack_collection)
+        collection = client.get_or_create_collection(settings.attack_collection, metadata=COSINE_SPACE)
 
     if not refresh and collection.count() > 0:
         print(

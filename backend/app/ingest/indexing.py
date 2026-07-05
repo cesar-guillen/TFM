@@ -2,30 +2,34 @@ from typing import Callable
 
 import httpx
 
-from app.attack.embeddings import embed_text
-from app.core.chroma import get_chroma_client
-from app.core.config import settings
+from app.attack.embeddings import embed_texts
+from app.core.chroma import get_report_chunks_collection
 from app.ingest.chunking import Chunk, chunk_markdown
 
 EMBED_TIMEOUT = 240.0
+# Chunks embedded per /api/embed request. One request per batch amortizes HTTP/
+# scheduling overhead (the runner's single slot means concurrency never helps —
+# see build_kb's n_slots=1 note); kept small so the progress callback still
+# updates at a reasonable cadence on slow (no-AVX VM) CPUs where one batch can
+# take ~a minute.
+EMBED_BATCH_SIZE = 4
 
-# Called after each chunk embeds, as (chunks_embedded, chunk_count) — lets the
-# caller surface live progress (see app.ingest.jobs) for what's by far the
-# slowest step in the ingest request.
+# Called as (chunks_embedded, chunk_count) — immediately with (0, N) when
+# embedding starts, then after each batch — so the caller (app.ingest.jobs) can
+# surface live progress for what's by far the slowest step in the ingest.
 ProgressCallback = Callable[[int, int], None]
 
 
 def _embed_chunks(chunks: list[Chunk], on_progress: ProgressCallback | None = None) -> list[list[float]]:
-    """Sequential on purpose: the loaded nomic-embed-text runner serves
-    `/api/embeddings` with a single slot (`n_slots = 1` at load, independent of
-    OLLAMA_NUM_PARALLEL) — concurrent client requests just queue behind each
-    other with extra context-swap overhead, they don't run in parallel."""
-    embeddings = []
+    embeddings: list[list[float]] = []
+    if on_progress:
+        on_progress(0, len(chunks))
     with httpx.Client(timeout=EMBED_TIMEOUT) as client:
-        for i, chunk in enumerate(chunks):
-            embeddings.append(embed_text(chunk.text, client))
+        for i in range(0, len(chunks), EMBED_BATCH_SIZE):
+            batch = chunks[i : i + EMBED_BATCH_SIZE]
+            embeddings.extend(embed_texts([chunk.text for chunk in batch], client))
             if on_progress:
-                on_progress(i + 1, len(chunks))
+                on_progress(len(embeddings), len(chunks))
     return embeddings
 
 
@@ -42,7 +46,7 @@ def index_report(
     if not chunks:
         return chunks
 
-    collection = get_chroma_client().get_or_create_collection(settings.report_chunks_collection)
+    collection = get_report_chunks_collection()
     embeddings = _embed_chunks(chunks, on_progress)
 
     collection.upsert(

@@ -1,9 +1,11 @@
 import os
+import threading
 import uuid
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 
+from app.attack.embeddings import embed_texts
 from app.core.config import settings
 from app.ingest.indexing import index_report
 from app.ingest.jobs import create_job, get_job, update_job
@@ -12,11 +14,22 @@ from app.ingest.pdf_to_markdown import pdf_to_markdown
 router = APIRouter()
 
 
+def _warm_embed_model() -> None:
+    """Fire-and-forget: make Ollama load the embedding model now, so the load
+    overlaps PDF parsing instead of stalling the first chunk's embed request.
+    Errors are ignored — if Ollama is down, the real embed step reports it."""
+    try:
+        embed_texts(["warmup"])
+    except Exception:
+        pass
+
+
 def _process(report_id: str, filename: str, dest_path: str) -> None:
     """Runs in a background task, after the response is already sent — parsing
     and (especially) embedding are slow, so the client shouldn't block on them.
     Progress is polled via GET /ingest/{report_id}/status instead."""
     try:
+        threading.Thread(target=_warm_embed_model, daemon=True).start()
         update_job(report_id, status="parsing")
         markdown = pdf_to_markdown(dest_path)
 
