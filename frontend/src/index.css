@@ -184,3 +184,835 @@ body {
   background: var(--danger-soft);
   color: var(--danger);
 }
+
+.btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.attack-matrix {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  /* Fill the flex parent and allow shrinking below content width, so the wide
+     grid scrolls *inside* .attack-matrix__grid instead of overflowing the page
+     (which would drag the toolbar/header out of view when scrolled right). */
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.attack-matrix__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: wrap;
+}
+
+.attack-matrix__toolbar .text-input {
+  flex: 1;
+  min-width: 160px;
+  max-width: 320px;
+}
+
+.attack-matrix__legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.attack-matrix__legend-swatch {
+  display: inline-block;
+  width: 48px;
+  height: 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* Hidden-tactics control: shown in the toolbar once any tactic is hidden */
+.attack-matrix__hidden {
+  position: relative;
+}
+
+.attack-matrix__hidden-btn {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.76rem;
+}
+
+.attack-matrix__hidden-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.attack-matrix__hidden-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-family: inherit;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.attack-matrix__hidden-item:hover {
+  background: var(--accent-soft);
+}
+
+.attack-matrix__hidden-show {
+  font-size: 0.72rem;
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+
+.attack-matrix__hidden-item--all {
+  justify-content: center;
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0;
+  color: var(--text-dim);
+}
+
+.attack-matrix__grid {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  overflow: auto;
+  /* No top padding: sticky column headers pin flush to the grid's top edge, so
+     scrolled cells can't peek through a gap above them. */
+  padding: 0 0.75rem 1.75rem;
+  align-items: flex-start;
+}
+
+.attack-matrix__column {
+  flex: 0 0 178px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  /* No max-height / no inner scroll: the whole grid scrolls, so the entire
+     matrix is visible at once (like the real Navigator) instead of each tactic
+     column getting its own scrollbar. */
+}
+
+.attack-matrix__column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 7px 7px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+  /* Stay pinned to the top of the scrolling grid so the tactic stays labelled
+     while scrolling down the (now full-height) matrix. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.attack-matrix__column-header:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.attack-matrix__column-header span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attack-matrix__column-count {
+  font-weight: 500;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.attack-matrix__column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+}
+
+.attack-matrix__group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Expanded parent brackets its sub-techniques so they read as one cluster */
+.attack-matrix__group--open {
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding-bottom: 4px;
+}
+
+.attack-matrix__cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-raised);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.attack-matrix__cell--interactive {
+  cursor: pointer;
+}
+
+.attack-matrix__cell--interactive:hover {
+  border-color: var(--accent);
+}
+
+.attack-matrix__cell--selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.attack-matrix__cell--scored {
+  border-color: transparent;
+}
+
+/* Meta row: caret, id, count pill, spacer, edit + link. The name gets its own
+   full-width row below so long names wrap naturally instead of one word/line. */
+.attack-matrix__cell-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.attack-matrix__cell-spacer {
+  flex: 1;
+}
+
+.attack-matrix__cell-id {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.attack-matrix__cell--scored .attack-matrix__cell-id {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.attack-matrix__cell-name {
+  overflow-wrap: break-word; /* full name, wraps across the whole cell width */
+}
+
+.attack-matrix__cell-edit {
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.attack-matrix__cell-edit:hover {
+  color: var(--accent-strong);
+}
+
+.attack-matrix__cell:hover .attack-matrix__cell-edit,
+.attack-matrix__cell:focus-within .attack-matrix__cell-edit,
+.attack-matrix__cell--scored .attack-matrix__cell-edit {
+  opacity: 0.85;
+}
+
+/* Sub-technique cluster: indented under the parent with a connector rail */
+.attack-matrix__subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 3px 0 0 0.85rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--accent);
+}
+
+.attack-matrix__cell--sub {
+  font-size: 0.7rem;
+  background: var(--bg-panel);
+}
+
+/* Rotating caret makes the expand state obvious */
+.attack-matrix__caret {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: transform 0.12s ease;
+}
+
+.attack-matrix__cell--scored .attack-matrix__caret {
+  color: inherit;
+}
+
+.attack-matrix__caret--open {
+  transform: rotate(90deg);
+}
+
+/* Pill count signals "this technique has sub-techniques to expand" */
+.attack-matrix__sub-count {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  font-weight: 600;
+  min-width: 16px;
+  height: 15px;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attack-matrix__cell--scored .attack-matrix__sub-count {
+  background: rgba(0, 0, 0, 0.18);
+  color: inherit;
+}
+
+.attack-matrix__cell-link {
+  color: var(--text-faint);
+  text-decoration: none;
+  font-size: 0.7rem;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  flex-shrink: 0;
+}
+
+.attack-matrix__cell--scored .attack-matrix__cell-link {
+  color: inherit;
+}
+
+.attack-matrix__cell:hover .attack-matrix__cell-link,
+.attack-matrix__cell:focus-within .attack-matrix__cell-link {
+  opacity: 0.85;
+}
+
+.attack-matrix--compact .attack-matrix__toolbar {
+  padding: 0.5rem 0.75rem;
+}
+
+.attack-matrix--compact .attack-matrix__column {
+  flex-basis: 158px;
+}
+
+.attack-matrix--compact .attack-matrix__cell {
+  font-size: 0.7rem;
+  padding: 0.28rem 0.4rem;
+}
+
+/* Shared anchored popover shell (tactic menu + cell editor) */
+.attack-matrix__popover {
+  position: fixed;
+  z-index: 50;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 0.35rem;
+}
+
+.attack-matrix__tactic-menu-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  padding: 0.35rem 0.55rem 0.2rem;
+}
+
+/* Floating cell editor popover (replaces the old full-width bottom bar) */
+.attack-matrix__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem;
+}
+
+.attack-matrix__editor-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.attack-matrix__editor-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.attack-matrix__editor-header strong {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--accent-strong);
+}
+
+.attack-matrix__editor-header span {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.attack-matrix__editor-close {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+}
+
+.attack-matrix__editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.attack-matrix__editor-score {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.attack-matrix__editor-score input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.attack-matrix__editor-score input[type="number"] {
+  width: 48px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.25rem 0.35rem;
+  font-size: 0.78rem;
+  font-family: inherit;
+  /* Hide the up/down spinner buttons — they're obtrusive and the slider
+     already covers coarse adjustment; the field stays free-typeable. */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.attack-matrix__editor-score input[type="number"]::-webkit-outer-spin-button,
+.attack-matrix__editor-score input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.attack-matrix__editor-field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.4rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  text-transform: none;
+  letter-spacing: normal;
+  resize: vertical;
+}
+
+.attack-matrix__editor-remove {
+  width: 100%;
+}
+
+/* Export / import / theme menu */
+.matrix-menu {
+  position: relative;
+}
+
+.matrix-menu__dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: 224px;
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.matrix-menu__item {
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: inherit;
+  padding: 0.5rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.matrix-menu__item:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.matrix-menu__item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.matrix-menu__item--danger {
+  color: var(--danger);
+}
+
+.matrix-menu__item--danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.matrix-menu__separator {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 0.35rem 0.2rem;
+}
+
+.matrix-menu__label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  padding: 0.25rem 0.55rem;
+}
+
+.matrix-menu__themes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  padding: 0.15rem;
+}
+
+.matrix-menu__theme {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  font-family: inherit;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.matrix-menu__theme:hover {
+  border-color: var(--accent);
+}
+
+.matrix-menu__theme--active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.matrix-menu__theme-swatch {
+  width: 20px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.matrix-import-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.matrix-import-error button {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* ── Overview (scaled-to-fit) matrix ─────────────────────────────────────── */
+
+.attack-matrix--overview {
+  height: auto;
+  width: max-content;
+}
+
+.attack-matrix--overview .attack-matrix__grid {
+  overflow: visible;
+  flex: initial;
+  padding: 0;
+}
+
+.attack-matrix--overview .attack-matrix__column-header--static {
+  cursor: default;
+  position: static;
+}
+
+.matrix-overview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.matrix-overview__content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+/* ── Upload dropzone (hero + compact) ────────────────────────────────────── */
+
+.uploader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.uploader--compact {
+  height: 100%;
+}
+
+.uploader__dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 1.75rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.uploader--compact .uploader__dropzone {
+  padding: 1rem 0.75rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.uploader__dropzone--over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.uploader__title {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.uploader--compact .uploader__title {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.uploader__hint {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  margin-top: 0.25rem;
+}
+
+.uploader__status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+/* ── Dashboard: hero (pre-upload) ────────────────────────────────────────── */
+
+.dashboard-hero {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.dashboard-hero__card {
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+}
+
+.dashboard-hero__title {
+  margin: 0 0 0.4rem;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dashboard-hero__subtitle {
+  margin: 0 0 1.5rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* ── Dashboard: loaded (post-upload) ─────────────────────────────────────── */
+
+.dashboard-loaded {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-loaded__matrix {
+  flex: 0 0 70%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-loaded__matrix-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 0.6rem;
+  display: flex;
+}
+
+.dashboard-loaded__bottom {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.dashboard-loaded__chat {
+  flex: 1.6;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-loaded__report {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+/* ── Report panel (bottom-right) ─────────────────────────────────────────── */
+
+.report-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.report-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem;
+}
+
+.report-panel__current {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.report-panel__filename {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-panel__text {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}

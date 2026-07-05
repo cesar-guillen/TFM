@@ -1,6 +1,6 @@
-import ChatPanel from "./components/ChatPanel";
-import MatrixView from "./components/MatrixView";
-import UploadPanel from "./components/UploadPanel";
+import { Route, Routes } from "react-router-dom";
+import DashboardPage from "./pages/DashboardPage";
+import MatrixPage from "./pages/MatrixPage";
 
 export default function App() {
   return (
@@ -37,42 +37,10 @@ export default function App() {
         </span>
       </header>
 
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "grid",
-          gridTemplateColumns: "360px 1fr 340px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-            borderRight: "1px solid var(--border)",
-            background: "var(--bg-panel)",
-          }}
-        >
-          <UploadPanel />
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <MatrixView />
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-            borderLeft: "1px solid var(--border)",
-            background: "var(--bg-panel)",
-          }}
-        >
-          <ChatPanel />
-        </div>
-      </div>
+      <Routes>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/matrix" element={<MatrixPage />} />
+      </Routes>
     </div>
   );
 }

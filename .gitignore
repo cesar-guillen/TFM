@@ -8,6 +8,7 @@ CLAUDE.md
 
 node_modules/
 dist/
+*.tsbuildinfo
 
 .env
 
