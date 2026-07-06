@@ -50,27 +50,23 @@ docker-compose.yml
 ## Running it
 
 ```
-cp .env.example .env
 docker compose up --build
 ```
+
+(Every setting has a working default baked into `docker-compose.yml`; create a `.env` only to override them — ports, model names, `MAP_WORKERS`/`OLLAMA_NUM_PARALLEL` parallelism.)
 
 - Frontend: http://localhost:5173
 - Backend: http://localhost:8000 (`/health`, `/api/ingest`, `/api/chat`, `/api/matrix`)
 - Ollama: http://localhost:11434
 
-Pull the models the first time (names configurable in `.env`):
+That's the only command needed. On first boot the `ollama-init` service pulls the two Ollama models (names configurable in `.env`; the chat model is a ~4.7 GB download, so the backend waits a few minutes before starting), and the backend restores the pre-embedded ATT&CK knowledge base into Chroma on startup. Both steps are near-instant no-ops on every boot after that.
+
+Uploaded reports persist under `./data/uploads/`; the vector store persists under `./data/chroma/`; Ollama models persist in the `ollama_models` volume.
+
+To rebuild the ATT&CK knowledge base from a newer MITRE release (re-embeds via Ollama and rewrites the bundled seed — see CLAUDE.md):
 
 ```
-docker compose exec ollama ollama pull llama3.1:8b
-docker compose exec ollama ollama pull nomic-embed-text
-```
-
-Uploaded reports persist under `./data/uploads/`; the vector store persists under `./data/chroma/`.
-
-Build the ATT&CK knowledge base (one-time, offline — see CLAUDE.md for details):
-
-```
-docker compose exec backend python -m app.attack.build_kb
+docker compose exec backend python -m app.attack.build_kb --refresh
 ```
 
 **Note on `OLLAMA_HOST`**: inside `docker-compose.yml` this is set to `http://ollama:11434` — `ollama` is the Compose service name, resolved by Docker's internal DNS to that container's private IP on the local Compose network. This is still entirely local (no traffic leaves the host); it's just how containers address each other instead of `localhost`, since each container has its own network namespace.
@@ -79,6 +75,20 @@ docker compose exec backend python -m app.attack.build_kb
 
 - Docker Engine + the Compose v2 plugin (`docker compose version` should work). On this machine that came from the `docker-compose-v2` apt package.
 - Your user must be in the `docker` group (`groups` should list `docker`) to run Docker commands without `sudo`.
+
+### GPU acceleration (optional, ~10x faster mapping)
+
+With an NVIDIA GPU and the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed:
+
+```
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker   # WSL2 without systemd: sudo service docker restart
+
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+```
+
+Plain `docker compose up` keeps working on CPU-only machines.
 
 ## Next steps
 

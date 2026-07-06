@@ -7,6 +7,43 @@ BLOCK_RE = re.compile(r"[^\n].*?(?=\n\n+|\Z)", re.S)
 TARGET_CHARS = 1200  # soft size a chunk is packed towards
 MAX_CHARS = 2400  # hard cap; only a single oversized block (no blank lines) exceeds this
 
+# pymupdf4llm wraps heading text in emphasis markers (`# **1. Intro**`); strip
+# them so breadcrumbs, metadata, and classification see the plain title.
+EMPHASIS_RE = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1")
+
+# "5.1.2 Title"-style numbering. pymupdf4llm flattens most PDF headings to a
+# single `#` level, losing the hierarchy; the numeric prefix recovers it.
+NUMBER_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)*)[.)]?\s+")
+
+# Classification stamps rendered as headings (page banners, TLP markings).
+# They are not section structure: ignored for the heading stack entirely.
+BANNER_RE = re.compile(r"do not distribute|confidential|proprietary|tlp:\s*(clear|white|green|amber|red)", re.I)
+
+# Defender-guidance sections. These name techniques as things to prevent,
+# detect, or clean up — not as observed adversary activity — so mapping them
+# yields false positives. Matched against each heading with its numeric prefix
+# removed; a match anywhere in the heading path taints the whole subtree.
+GUIDANCE_RE = re.compile(
+    r"remediat|mitigat|recommend|countermeasure|containment|eradicat|\brecovery\b"
+    r"|lessons learned|post-incident|action plan|action items|next steps"
+    r"|best practice|hardening|how to protect|prevention|defensive measures"
+    r"|protective measures|detection opportunit|hunting quer|sigma rule|yara rule",
+    re.I,
+)
+
+# Document furniture with no mappable content: front/back matter and metadata.
+BOILERPLATE_RE = re.compile(
+    r"table of contents|^contents$|document control|references$|bibliography"
+    r"|acknowledg|about us|disclaimer|legal notice|copyright|revision history"
+    r"|version history|document history|glossary|distribution list",
+    re.I,
+)
+
+# A line of a table-of-contents rendered as text: "Some Section ....... 12".
+DOT_LEADER_RE = re.compile(r"\.{2,}\s*\d{1,4}\s*$")
+
+SectionRole = str  # "content" | "guidance" | "boilerplate"
+
 
 @dataclass
 class Chunk:
@@ -15,6 +52,35 @@ class Chunk:
     order: int
     start_char: int
     end_char: int
+    section_role: SectionRole = "content"
+
+
+def classify_heading_path(heading_path: list[str]) -> SectionRole:
+    """Role of the section a heading path leads to. Walks deepest-first so the
+    nearest classified ancestor wins: an unmatched subsection like "What Went
+    Well" inherits `guidance` from its "Lessons Learned" parent."""
+    for heading in reversed(heading_path):
+        title = NUMBER_PREFIX_RE.sub("", heading)
+        if GUIDANCE_RE.search(title):
+            return "guidance"
+        if BOILERPLATE_RE.search(title):
+            return "boilerplate"
+    return "content"
+
+
+def _clean_heading(text: str) -> str:
+    text = text.strip().rstrip("#").strip()  # trailing ATX closers
+    while True:
+        unwrapped = EMPHASIS_RE.sub(r"\2", text)
+        if unwrapped == text:
+            return text
+        text = unwrapped
+
+
+def _is_toc_block(text: str) -> bool:
+    lines = [line for line in text.splitlines() if line.strip()]
+    hits = sum(1 for line in lines if DOT_LEADER_RE.search(line))
+    return hits >= 3 and hits * 2 >= len(lines)
 
 
 def _split_blocks(markdown: str) -> list[tuple[str, int, int]]:
@@ -56,6 +122,13 @@ def chunk_markdown(
     """Section-aware, overlapping chunker.
 
     Headings define section boundaries (never merged across a heading change).
+    A heading's depth comes from its numeric prefix when it has one ("5.1" is a
+    child of "5."), recovering the hierarchy pymupdf4llm flattens; unnumbered
+    headings inside a numbered section nest one level below it. Every chunk is
+    tagged with a `section_role` from its heading path (see
+    `classify_heading_path`), so indexing can drop defender-guidance and
+    boilerplate sections instead of mapping them.
+
     Paragraphs are the atomic unit and are never split mid-paragraph; a section
     too large for one chunk is packed across multiple chunks along paragraph
     boundaries, carrying the last paragraph forward as overlap. Only a single
@@ -64,37 +137,58 @@ def chunk_markdown(
     """
     blocks = _split_blocks(markdown)
     chunks: list[Chunk] = []
-    heading_stack: list[tuple[int, str]] = []
+    heading_stack: list[tuple[int, str, bool]] = []  # (level, title, numbered)
     buffer: list[tuple[str, int, int]] = []
     order = 0
 
     def heading_path() -> list[str]:
-        return [text for _, text in heading_stack]
+        return [title for _, title, _ in heading_stack]
 
-    def flush() -> None:
+    def effective_level(md_level: int, title: str) -> int:
+        number = NUMBER_PREFIX_RE.match(title)
+        if number:
+            # Depth follows the numbering; level 1 stays reserved for an
+            # unnumbered document title above the numbered sections.
+            return number.group(1).count(".") + 2
+        for level, _, numbered in reversed(heading_stack):
+            if numbered:
+                return level + 1
+        return md_level
+
+    def flush(role_override: SectionRole | None = None) -> None:
         nonlocal order
         if not buffer:
             return
+        path = heading_path()
         body = "\n\n".join(b[0] for b in buffer)
-        breadcrumb = " > ".join(heading_path())
+        breadcrumb = " > ".join(path)
         text = f"{breadcrumb}\n\n{body}" if breadcrumb else body
         chunks.append(
             Chunk(
                 text=text,
-                heading_path=heading_path(),
+                heading_path=path,
                 order=order,
                 start_char=buffer[0][1],
                 end_char=buffer[-1][2],
+                section_role=role_override or classify_heading_path(path),
             )
         )
         order += 1
 
     def emit(text: str, start: int, end: int) -> None:
         nonlocal order
-        breadcrumb = " > ".join(heading_path())
+        path = heading_path()
+        breadcrumb = " > ".join(path)
         full_text = f"{breadcrumb}\n\n{text}" if breadcrumb else text
         chunks.append(
-            Chunk(text=full_text, heading_path=heading_path(), order=order, start_char=start, end_char=end)
+            Chunk(
+                text=full_text,
+                heading_path=path,
+                order=order,
+                start_char=start,
+                end_char=end,
+                section_role=classify_heading_path(path),
+            )
         )
         order += 1
 
@@ -103,10 +197,22 @@ def chunk_markdown(
         if heading_match:
             flush()
             buffer = []
-            level = len(heading_match.group(1))
+            title = _clean_heading(heading_match.group(2))
+            if not title or BANNER_RE.search(title):
+                continue  # section break, but not part of the hierarchy
+            level = effective_level(len(heading_match.group(1)), title)
             while heading_stack and heading_stack[-1][0] >= level:
                 heading_stack.pop()
-            heading_stack.append((level, heading_match.group(2).strip()))
+            heading_stack.append((level, title, bool(NUMBER_PREFIX_RE.match(title))))
+            continue
+
+        if _is_toc_block(text):
+            # A table of contents without a "Contents" heading; keep it out of
+            # whatever section it landed in and let indexing drop it.
+            flush()
+            buffer = [(text, start, end)]
+            flush(role_override="boilerplate")
+            buffer = []
             continue
 
         if len(text) > max_chars:

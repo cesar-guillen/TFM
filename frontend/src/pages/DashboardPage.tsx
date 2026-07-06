@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { startMapping, type IngestStarted } from "../api/client";
 import MatrixOverview from "../components/MatrixOverview";
@@ -13,10 +13,11 @@ import { layerToState } from "../types/attack";
 export default function DashboardPage() {
   const [started, setStarted] = useState<IngestStarted | null>(null);
   const [mappingReportId, setMappingReportId] = useState<string | null>(null);
+  const [mapAttempt, setMapAttempt] = useState(0);
   const [startingMap, setStartingMap] = useState(false);
   const job = useIngestJob(started?.report_id ?? null);
-  const mappingJob = useMappingJob(mappingReportId);
-  const { catalog, layer, loading, error } = useAttackData();
+  const mappingJob = useMappingJob(mappingReportId, mapAttempt);
+  const { catalog, loading, error } = useAttackData();
 
   // A new upload replaces the previous report *and* its mapping run.
   function handleStarted(next: IngestStarted) {
@@ -30,6 +31,7 @@ export default function DashboardPage() {
     try {
       await startMapping(started.report_id);
       setMappingReportId(started.report_id);
+      setMapAttempt((a) => a + 1); // restart polling even if the report id didn't change (retry)
     } catch (e) {
       // Surfaced crudely for now; the status endpoint reports job-level errors.
       alert(e instanceof Error ? e.message : String(e));
@@ -37,6 +39,16 @@ export default function DashboardPage() {
       setStartingMap(false);
     }
   }
+
+  // Mapping starts itself the moment ingestion finishes — no button. Guarded
+  // so a poll tick can't double-start the same report's run.
+  const ingestDone = job?.status === "done" && job.report_id === started?.report_id;
+  useEffect(() => {
+    if (ingestDone && !startingMap && mappingReportId !== started!.report_id) {
+      void handleGenerate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ingestDone, mappingReportId]);
 
   // Before the first report is uploaded: just the upload window, centered.
   if (!started) {
@@ -53,10 +65,11 @@ export default function DashboardPage() {
     );
   }
 
-  // The generated layer (once mapping finishes) beats the backend's current
-  // layer snapshot fetched at mount; both beat an empty matrix.
-  const displayedLayer =
-    mappingJob?.status === "done" && mappingJob.layer ? mappingJob.layer : layer;
+  // The matrix only ever shows the current report's mapping run: empty while
+  // a (re-)upload is ingesting — a new upload resets `mappingReportId`, so old
+  // mappings never linger — then filling in live as chunks are mapped (the
+  // layer is rebuilt after every chunk).
+  const displayedState = mappingJob?.layer ? layerToState(mappingJob.layer) : {};
 
   // As soon as an upload starts (not once it finishes): matrix (top ~70%) +
   // ingest progress & report (~30%), so the user sees the pipeline actually
@@ -82,7 +95,7 @@ export default function DashboardPage() {
               <p>{error}</p>
             </div>
           )}
-          {catalog && displayedLayer && <MatrixOverview catalog={catalog} layer={layerToState(displayedLayer)} />}
+          {catalog && <MatrixOverview catalog={catalog} layer={displayedState} />}
         </div>
       </section>
 

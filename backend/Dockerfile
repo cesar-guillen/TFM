@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Unbuffered stdout so startup prints (KB build/restore progress) reach
+# `docker compose up` logs as they happen instead of on process exit.
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 COPY requirements.txt .

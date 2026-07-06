@@ -18,6 +18,14 @@ def set_current_layer(layer: dict) -> None:
         _current_layer = layer
 
 
+def clear_current_layer() -> None:
+    """Drop the previous report's layer. Called when a new report is uploaded,
+    so /matrix never serves mappings that belong to a replaced report."""
+    global _current_layer
+    with _lock:
+        _current_layer = None
+
+
 def empty_layer() -> dict:
     return {
         "name": "TFM generated layer",

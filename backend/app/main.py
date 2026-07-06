@@ -1,10 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import attack, chat, ingest, mapping, matrix
+from app.attack.build_kb import build_kb
 from app.core.config import settings
 
-app = FastAPI(title="TFM ATT&CK Mapper")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Instant no-op once the collection is populated; on a fresh volume it
+    # restores the bundled pre-embedded seed, so `docker compose up` alone
+    # yields a working KB (retrieval divides by the KB size — see bm25.py).
+    build_kb()
+    yield
+
+
+app = FastAPI(title="TFM ATT&CK Mapper", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

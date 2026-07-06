@@ -1,8 +1,10 @@
+import { useEffect, useRef } from "react";
 import type { IngestStatus, IngestStatusValue, MappingStatus } from "../api/client";
 
 interface ProgressPanelProps {
   job: IngestStatus | null;
   mappingJob: MappingStatus | null;
+  /** Retry hook for a failed run — mapping starts automatically otherwise. */
   onGenerate: () => void;
   generateDisabled?: boolean;
 }
@@ -25,21 +27,20 @@ const MAPPING_LABELS: Record<MappingStatus["status"], string> = {
 };
 
 function MappingSection({
-  job,
   mappingJob,
   onGenerate,
   generateDisabled,
 }: ProgressPanelProps) {
-  // Only reachable once ingest is done; offer the button, or show job progress.
+  // Only reachable once ingest is done. Mapping auto-starts from the
+  // dashboard, so before the first status poll lands there's just a beat of
+  // "starting" — no button.
   if (!mappingJob) {
     return (
       <div className="mapping-section">
-        <button className="btn btn-primary" onClick={onGenerate} disabled={generateDisabled}>
-          Generate ATT&amp;CK matrix
-        </button>
+        <span className="badge badge-accent">Starting technique mapping…</span>
         <p className="mapping-section__hint">
-          Maps each indexed chunk to techniques with the local LLM. This takes a while on CPU — progress shows per
-          chunk.
+          Each indexed chunk is mapped to ATT&amp;CK techniques with the local LLM — results appear in the matrix
+          above as they come in.
         </p>
       </div>
     );
@@ -83,6 +84,17 @@ function MappingSection({
 }
 
 export default function ProgressPanel({ job, mappingJob, onGenerate, generateDisabled }: ProgressPanelProps) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Keep the step the pipeline is currently on in view: whenever ingest or
+  // mapping advances, scroll the active element into the panel's viewport
+  // (the panel body scrolls, not the page).
+  useEffect(() => {
+    bodyRef.current
+      ?.querySelector("[data-progress-active]")
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [job?.status, mappingJob?.status]);
+
   if (!job) {
     return (
       <>
@@ -130,12 +142,16 @@ export default function ProgressPanel({ job, mappingJob, onGenerate, generateDis
         <h2>Progress</h2>
         <span className="report-panel__filename">{job.filename}</span>
       </div>
-      <div className="panel-body">
+      <div className="panel-body" ref={bodyRef}>
         <div className="progress-steps">
           {STEPS.map((step, i) => {
             const state = job.status === "done" ? "done" : i < currentIndex ? "done" : i === currentIndex ? "active" : "pending";
             return (
-              <div key={step.key} className={`progress-step progress-step--${state}`}>
+              <div
+                key={step.key}
+                className={`progress-step progress-step--${state}`}
+                data-progress-active={state === "active" ? "" : undefined}
+              >
                 <span className="progress-step__dot" />
                 <div className="progress-step__body">
                   <span className="progress-step__label">{step.label}</span>
@@ -155,7 +171,9 @@ export default function ProgressPanel({ job, mappingJob, onGenerate, generateDis
           })}
         </div>
         {job.status === "done" && (
-          <MappingSection job={job} mappingJob={mappingJob} onGenerate={onGenerate} generateDisabled={generateDisabled} />
+          <div data-progress-active="">
+            <MappingSection job={job} mappingJob={mappingJob} onGenerate={onGenerate} generateDisabled={generateDisabled} />
+          </div>
         )}
       </div>
     </>

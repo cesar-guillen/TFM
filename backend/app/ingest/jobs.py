@@ -12,6 +12,7 @@ class IngestJob:
     status: Status = "parsing"
     chunk_count: int = 0
     chunks_embedded: int = 0
+    chunks_skipped: int = 0  # remediation/boilerplate chunks excluded by the section filter
     markdown: str | None = None
     error: str | None = None
 

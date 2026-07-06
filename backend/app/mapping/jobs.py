@@ -15,7 +15,7 @@ class MappingJob:
     status: Status = "retrieving"
     chunk_count: int = 0
     chunks_mapped: int = 0
-    layer: dict | None = None  # Navigator layer JSON, set once status == "done"
+    layer: dict | None = None  # Navigator layer JSON; partial during "mapping", final at "done"
     error: str | None = None
 
 

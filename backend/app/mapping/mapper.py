@@ -12,12 +12,14 @@ Grounding rules (the hallucination mitigations from CLAUDE.md):
   (technique -> chunk -> char span in the source markdown).
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Callable
 
 import httpx
 
 from app.core.chroma import get_attack_collection, get_report_chunks_collection
+from app.core.config import settings
 from app.core.llm import CHAT_TIMEOUT, chat_json
 from app.retrieval.retrieve import TechniqueMatch, search_techniques_for_report
 
@@ -29,12 +31,17 @@ SYSTEM_PROMPT = (
     "MITRE ATT&CK techniques. Be conservative: only map a technique when the "
     "excerpt contains concrete evidence of it — an activity, tool, or finding "
     "that the technique describes. Do not map techniques that are merely "
-    "plausible or thematically related. If the excerpt is boilerplate (title "
-    "page, table of contents, methodology, disclaimers), map nothing."
+    "plausible or thematically related. A technique mentioned only as something "
+    "to prevent, detect, or remediate (recommendations, mitigations, hardening "
+    "advice, response actions) is NOT evidence — map only adversary activity "
+    "the excerpt reports as having occurred. If the excerpt is boilerplate "
+    "(title page, table of contents, methodology, disclaimers), map nothing."
 )
 
-# Called as (chunks_mapped, chunk_count) after each chunk resolves.
-ProgressCallback = Callable[[int, int], None]
+# Called as (chunks_mapped, chunk_count, mappings_so_far) after each chunk
+# resolves; mappings_so_far is a report-ordered snapshot of every accepted
+# mapping to date, so the caller can publish a live partial matrix.
+ProgressCallback = Callable[[int, int, list["ChunkMapping"]], None]
 
 
 @dataclass
@@ -45,6 +52,7 @@ class ChunkMapping:
     technique_name: str
     confidence: str  # "high" | "medium" | "low"
     evidence: str
+    reason: str = ""  # the model's one-sentence justification for the mapping
 
 
 def _normalize(text: str) -> str:
@@ -72,9 +80,10 @@ def _response_schema(candidate_ids: list[str]) -> dict:
                     "properties": {
                         "technique_id": {"type": "string", "enum": candidate_ids},
                         "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                        "reason": {"type": "string"},
                         "evidence": {"type": "string"},
                     },
-                    "required": ["technique_id", "confidence", "evidence"],
+                    "required": ["technique_id", "confidence", "reason", "evidence"],
                 },
             }
         },
@@ -108,8 +117,9 @@ def _chunk_prompt(chunk_text: str, candidates: list[TechniqueMatch], description
         "Candidate ATT&CK techniques (the only valid choices):\n"
         f"{_candidate_block(candidates, descriptions)}\n\n"
         "Which candidates does the excerpt give concrete evidence for? For each, "
-        "quote the shortest phrase from the excerpt (at most ~12 words) that "
-        "evidences it. Return an empty list if none apply."
+        "give a one-sentence reason saying what in the excerpt shows the "
+        "technique being used, and quote the shortest phrase from the excerpt "
+        "(at most ~12 words) that evidences it. Return an empty list if none apply."
     )
 
 
@@ -131,40 +141,58 @@ def map_report(report_id: str, on_progress: ProgressCallback | None = None) -> l
     kb = get_attack_collection().get(ids=all_ids, include=["documents"])
     descriptions = {i: _trim_description(d) for i, d in zip(kb["ids"], kb["documents"])}
 
-    # Process chunks in report order so progress (and any partial failure)
-    # reads naturally against the document.
+    def map_one(chunk_id: str, client: httpx.Client) -> list[ChunkMapping]:
+        candidates = candidates_by_chunk[chunk_id]
+        by_id = {m.attack_id: m for m in candidates}
+        result = chat_json(
+            _chunk_prompt(chunk_text[chunk_id], candidates, descriptions),
+            _response_schema(list(by_id)),
+            client=client,
+            system=SYSTEM_PROMPT,
+        )
+        accepted: list[ChunkMapping] = []
+        for m in result.get("mappings", []):
+            tid = m.get("technique_id")
+            if tid not in by_id:  # schema enum should prevent this; drop if not
+                continue
+            if not _evidence_in_chunk(m.get("evidence") or "", chunk_text[chunk_id]):
+                continue  # fabricated/paraphrased "quote" — not grounded, drop it
+            accepted.append(
+                ChunkMapping(
+                    chunk_id=chunk_id,
+                    heading_path=chunk_meta[chunk_id].get("heading_path", ""),
+                    technique_id=tid,
+                    technique_name=by_id[tid].name,
+                    confidence=m.get("confidence", "low"),
+                    evidence=(m.get("evidence") or "").strip()[:300],
+                    reason=(m.get("reason") or "").strip()[:250],
+                )
+            )
+        return accepted
+
+    # Submit in report order; chunks resolve concurrently (map_workers must not
+    # exceed the ollama service's OLLAMA_NUM_PARALLEL or requests just queue
+    # server-side). Progress snapshots are re-assembled in report order so the
+    # partial matrix and evidence read naturally against the document.
     ordered = sorted(candidates_by_chunk, key=lambda cid: chunk_meta[cid]["order"])
     total = len(ordered)
     if on_progress:
-        on_progress(0, total)
+        on_progress(0, total, [])
 
-    mappings: list[ChunkMapping] = []
+    by_chunk: dict[str, list[ChunkMapping]] = {}
     with httpx.Client(timeout=CHAT_TIMEOUT) as client:
-        for done, chunk_id in enumerate(ordered, start=1):
-            candidates = candidates_by_chunk[chunk_id]
-            by_id = {m.attack_id: m for m in candidates}
-            result = chat_json(
-                _chunk_prompt(chunk_text[chunk_id], candidates, descriptions),
-                _response_schema(list(by_id)),
-                client=client,
-                system=SYSTEM_PROMPT,
-            )
-            for m in result.get("mappings", []):
-                tid = m.get("technique_id")
-                if tid not in by_id:  # schema enum should prevent this; drop if not
-                    continue
-                if not _evidence_in_chunk(m.get("evidence") or "", chunk_text[chunk_id]):
-                    continue  # fabricated/paraphrased "quote" — not grounded, drop it
-                mappings.append(
-                    ChunkMapping(
-                        chunk_id=chunk_id,
-                        heading_path=chunk_meta[chunk_id].get("heading_path", ""),
-                        technique_id=tid,
-                        technique_name=by_id[tid].name,
-                        confidence=m.get("confidence", "low"),
-                        evidence=(m.get("evidence") or "").strip()[:300],
-                    )
-                )
-            if on_progress:
-                on_progress(done, total)
-    return mappings
+        with ThreadPoolExecutor(max_workers=settings.map_workers) as pool:
+            futures = {pool.submit(map_one, chunk_id, client): chunk_id for chunk_id in ordered}
+            try:
+                for future in as_completed(futures):
+                    by_chunk[futures[future]] = future.result()
+                    if on_progress:
+                        snapshot = [m for cid in ordered for m in by_chunk.get(cid, [])]
+                        on_progress(len(by_chunk), total, snapshot)
+            except BaseException:
+                # A failed chunk fails the run: don't let queued chunks grind
+                # on (each can block for the full LLM timeout) before the
+                # error reaches the job.
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
+    return [m for cid in ordered for m in by_chunk.get(cid, [])]

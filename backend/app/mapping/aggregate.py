@@ -14,8 +14,13 @@ CONFIDENCE_SCORES = {"high": 90, "medium": 60, "low": 30}
 
 
 def _evidence_line(m: ChunkMapping) -> str:
+    """Justification first ("why flagged"), then the verbatim quote and the
+    section it came from, so the traceability chain stays intact."""
     where = m.heading_path or f"chunk {m.chunk_id.rsplit(':', 1)[-1]}"
-    return f'[{m.confidence}] "{m.evidence}" — {where}'
+    line = f"[{m.confidence}]"
+    if m.reason:
+        line += f" {m.reason}"
+    return f'{line} — "{m.evidence}" ({where})'
 
 
 def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19") -> dict:

@@ -6,8 +6,10 @@ const POLL_INTERVAL_MS = 2000;
 
 /** Polls mapping status for a report whose mapping job has been started
  * (pass null until then); stops at a terminal state ("done"/"error"), or if
- * `reportId` changes/unmounts. Mirrors useIngestJob. */
-export function useMappingJob(reportId: string | null): MappingStatus | null {
+ * `reportId` changes/unmounts. Mirrors useIngestJob. Bump `attempt` to
+ * restart polling for the same report (retry after an error — polling has
+ * already stopped by then, and `reportId` alone wouldn't change). */
+export function useMappingJob(reportId: string | null, attempt = 0): MappingStatus | null {
   const [job, setJob] = useState<MappingStatus | null>(null);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export function useMappingJob(reportId: string | null): MappingStatus | null {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [reportId]);
+  }, [reportId, attempt]);
 
   return job;
 }

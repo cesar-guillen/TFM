@@ -10,12 +10,19 @@ services:
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
       - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      - MAP_WORKERS=${MAP_WORKERS:-4}
     volumes:
       - ./data:/data
       - ./backend/app:/app/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
+      # Hold the backend until the models exist, so the first upload/mapping
+      # on a fresh machine can't hit an Ollama 404. Near-instant once the
+      # models are in the ollama_models volume.
+      ollama-init:
+        condition: service_completed_successfully
 
   frontend:
     build: ./frontend
@@ -38,12 +45,39 @@ services:
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     environment:
-      # Lets Ollama actually process embedding requests concurrently instead of
-      # queueing them one at a time behind a single execution slot; matches
-      # EMBED_WORKERS in app.attack.build_kb.
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      # Execution slots for concurrent requests: the mapping stage sends
+      # MAP_WORKERS chunk verdicts at once (llama.cpp batches their decode,
+      # which is where the wall-clock win on CPU comes from), and the KB
+      # builder embeds with EMBED_WORKERS (app.attack.build_kb). Keep >= both.
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
     volumes:
       - ollama_models:/root/.ollama
+
+  # One-shot: pulls the chat + embedding models into the ollama service (they
+  # land in the ollama_models volume, so this only downloads on first boot or
+  # after the volume is removed). `ollama show` succeeds offline for a model
+  # that's already present, so later boots don't need network access. The
+  # backend waits for this to complete successfully before starting.
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        until ollama ls >/dev/null 2>&1; do echo "waiting for ollama server..."; sleep 2; done
+        for m in ${OLLAMA_EMBED_MODEL:-nomic-embed-text} ${OLLAMA_MODEL:-llama3.1:8b}; do
+          if ollama show "$$m" >/dev/null 2>&1; then
+            echo "$$m already present"
+          else
+            echo "pulling $$m..."
+            ollama pull "$$m" || exit 1
+          fi
+        done
+    restart: "no"
 
 volumes:
   ollama_models:

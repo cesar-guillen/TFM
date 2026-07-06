@@ -17,8 +17,19 @@ def _process(report_id: str) -> None:
     try:
         update_job(report_id, status="retrieving")
 
-        def on_progress(chunks_mapped: int, chunk_count: int) -> None:
-            update_job(report_id, status="mapping", chunk_count=chunk_count, chunks_mapped=chunks_mapped)
+        def on_progress(chunks_mapped: int, chunk_count: int, mappings_so_far) -> None:
+            # Re-aggregate and publish after every chunk so the dashboard
+            # matrix fills in live while the run is still going. Cheap: a few
+            # dozen mappings per report.
+            partial = aggregate_mappings(mappings_so_far)
+            matrix.set_current_layer(partial)
+            update_job(
+                report_id,
+                status="mapping",
+                chunk_count=chunk_count,
+                chunks_mapped=chunks_mapped,
+                layer=partial,
+            )
 
         mappings = map_report(report_id, on_progress=on_progress)
         update_job(report_id, status="aggregating")
@@ -67,6 +78,6 @@ def mapping_status(report_id: str):
         "status": job.status,
         "chunk_count": job.chunk_count,
         "chunks_mapped": job.chunks_mapped,
-        "layer": job.layer if job.status == "done" else None,
+        "layer": job.layer,  # partial while status == "mapping", final at "done"
         "error": job.error,
     }
