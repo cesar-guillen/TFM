@@ -979,11 +979,10 @@ body {
 }
 
 .dashboard-loaded__matrix {
-  flex: 0 0 70%;
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--border);
 }
 
 .dashboard-loaded__matrix-body {
@@ -994,26 +993,77 @@ body {
   display: flex;
 }
 
-.dashboard-loaded__bottom {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
+/* ── Floating progress bubble ────────────────────────────────────────────── */
 
-.dashboard-loaded__progress {
-  flex: 1.6;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.dashboard-loaded__report {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--border);
+.progress-bubble {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  width: 320px;
   background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.progress-bubble--collapsed {
+  width: 240px;
+}
+
+.progress-bubble__handle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border-soft);
+  cursor: grab;
+  user-select: none;
+  touch-action: none; /* required for pointer-event dragging on touch screens */
+}
+
+.progress-bubble--collapsed .progress-bubble__handle {
+  border-bottom: none;
+}
+
+.progress-bubble__handle:active {
+  cursor: grabbing;
+}
+
+.progress-bubble__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.progress-bubble__subtitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.progress-bubble__toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 0.2rem;
+}
+
+.progress-bubble__toggle:hover {
+  color: var(--text);
+}
+
+.progress-bubble__body {
+  padding: 0.75rem 0.85rem;
+  max-height: 45vh;
+  overflow-y: auto;
 }
 
 /* ── Report panel (bottom-right) ─────────────────────────────────────────── */

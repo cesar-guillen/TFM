@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { startMapping, type IngestStarted } from "../api/client";
 import MatrixOverview from "../components/MatrixOverview";
+import ProgressBubble from "../components/ProgressBubble";
 import ProgressPanel from "../components/ProgressPanel";
-import ReportPanel from "../components/ReportPanel";
 import UploadPanel from "../components/UploadPanel";
 import { useAttackData } from "../hooks/useAttackData";
 import { useIngestJob } from "../hooks/useIngestJob";
@@ -71,17 +71,31 @@ export default function DashboardPage() {
   // layer is rebuilt after every chunk).
   const displayedState = mappingJob?.layer ? layerToState(mappingJob.layer) : {};
 
-  // As soon as an upload starts (not once it finishes): matrix (top ~70%) +
-  // ingest progress & report (~30%), so the user sees the pipeline actually
-  // moving instead of staring at a spinner for the ~100s+ embedding takes.
+  // As soon as an upload starts (not once it finishes): the matrix fills the
+  // page, and pipeline progress lives in a draggable floating bubble on top of
+  // it, so the user sees the pipeline actually moving instead of staring at a
+  // spinner for the ~100s+ embedding takes. "New report" goes back to the
+  // upload hero (which resets the mapping state via handleStarted).
   return (
     <div className="dashboard-loaded">
       <section className="dashboard-loaded__matrix">
         <div className="panel-header" style={{ justifyContent: "space-between" }}>
           <h2>ATT&amp;CK Matrix</h2>
-          <Link to="/matrix" className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}>
-            Open full matrix ↗
-          </Link>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              className="btn"
+              style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}
+              onClick={() => {
+                setStarted(null);
+                setMappingReportId(null);
+              }}
+            >
+              New report
+            </button>
+            <Link to="/matrix" className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}>
+              Open full matrix ↗
+            </Link>
+          </div>
         </div>
         <div className="dashboard-loaded__matrix-body">
           {loading && (
@@ -99,19 +113,14 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="dashboard-loaded__bottom">
-        <div className="dashboard-loaded__progress">
-          <ProgressPanel
-            job={job}
-            mappingJob={mappingJob}
-            onGenerate={handleGenerate}
-            generateDisabled={startingMap}
-          />
-        </div>
-        <div className="dashboard-loaded__report">
-          <ReportPanel filename={started.filename} job={job} onStarted={handleStarted} />
-        </div>
-      </section>
+      <ProgressBubble title="Progress" subtitle={started.filename}>
+        <ProgressPanel
+          job={job}
+          mappingJob={mappingJob}
+          onGenerate={handleGenerate}
+          generateDisabled={startingMap}
+        />
+      </ProgressBubble>
     </div>
   );
 }

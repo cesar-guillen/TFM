@@ -12,15 +12,20 @@ from app.mapping.mapper import ChunkMapping
 # the tiers; 0 is reserved for "not mapped".
 CONFIDENCE_SCORES = {"high": 90, "medium": 60, "low": 30}
 
+# Score for a parent technique that wasn't mapped itself but has a mapped
+# sub-technique: the matrix collapses sub-techniques by default, so without
+# highlighting the parent the user could miss the flagged sub entirely.
+# Between "low" and "medium" — visible, but not outranking direct evidence.
+PARENT_OF_MAPPED_SUB_SCORE = 50
+
 
 def _evidence_line(m: ChunkMapping) -> str:
-    """Justification first ("why flagged"), then the verbatim quote and the
-    section it came from, so the traceability chain stays intact."""
-    where = m.heading_path or f"chunk {m.chunk_id.rsplit(':', 1)[-1]}"
+    """Justification first ("why flagged"), then the verbatim quote that
+    grounds it (see mapper._evidence_in_chunk)."""
     line = f"[{m.confidence}]"
     if m.reason:
         line += f" {m.reason}"
-    return f'{line} — "{m.evidence}" ({where})'
+    return f'{line} — "{m.evidence}"'
 
 
 def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19") -> dict:
@@ -39,6 +44,23 @@ def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19")
                 "techniqueID": technique_id,
                 "score": best,
                 "comment": comment,
+                "enabled": True,
+            }
+        )
+
+    # Promote parents of mapped sub-techniques that weren't mapped themselves.
+    mapped = set(by_technique)
+    for parent_id in sorted({tid.split(".")[0] for tid in mapped if "." in tid} - mapped):
+        subs = sorted(tid for tid in mapped if tid.startswith(parent_id + "."))
+        techniques.append(
+            {
+                "techniqueID": parent_id,
+                "score": PARENT_OF_MAPPED_SUB_SCORE,
+                "comment": (
+                    "Not mapped directly — highlighted because sub-technique"
+                    f"{'s' if len(subs) > 1 else ''} {', '.join(subs)} matched; "
+                    "expand to see the evidence."
+                ),
                 "enabled": True,
             }
         )
