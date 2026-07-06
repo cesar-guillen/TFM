@@ -50,6 +50,11 @@ services:
       # which is where the wall-clock win on CPU comes from), and the KB
       # builder embeds with EMBED_WORKERS (app.attack.build_kb). Keep >= both.
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
+      # Never evict loaded models (default is 5 idle minutes): together with
+      # the backend's startup warm-up (app.main), every run gets warm-model
+      # latency instead of paying a reload after each pause. Both models fit
+      # resident (chat ~6 GB + embed ~0.3 GB on an 8 GB GPU, or in RAM on CPU).
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:--1}
     volumes:
       - ollama_models:/root/.ollama
 

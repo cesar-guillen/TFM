@@ -26,6 +26,18 @@ NUM_PREDICT = 400
 CHAT_TIMEOUT = 600.0
 
 
+def warm_chat_model() -> None:
+    """Make Ollama load the chat model without generating anything: a
+    /api/generate call with no prompt returns once the model is in memory.
+    Called fire-and-forget at backend startup (app.main) so the first mapping
+    run doesn't pay the cold load."""
+    httpx.post(
+        f"{settings.ollama_host}/api/generate",
+        json={"model": settings.ollama_model},
+        timeout=CHAT_TIMEOUT,
+    ).raise_for_status()
+
+
 def chat_json(
     prompt: str,
     response_schema: dict,
