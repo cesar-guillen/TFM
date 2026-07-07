@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import type { Catalog, CatalogTechnique, LayerState, TechniqueSummary } from "../types/attack";
+import {
+  sortSubtechniques,
+  sortTechniques,
+  type Catalog,
+  type CatalogTechnique,
+  type LayerState,
+  type TechniqueSort,
+  type TechniqueSummary,
+} from "../types/attack";
 import { cssGradient, readableTextColor, scoreToColor, useHeatTheme, type HeatTheme } from "../theme/heatThemes";
 
 function matchesQuery(t: TechniqueSummary, query: string): boolean {
@@ -26,9 +34,18 @@ interface AttackMatrixProps {
   /** Static, scaled-to-fit render: no toolbar, no expand/hide interactions.
    * The whole matrix lays out at natural size so a parent can scale it. */
   overview?: boolean;
+  /** Vertical order of techniques within each tactic column. */
+  sortBy?: TechniqueSort;
 }
 
-export default function AttackMatrix({ catalog, layer, onLayerChange, compact = false, overview = false }: AttackMatrixProps) {
+export default function AttackMatrix({
+  catalog,
+  layer,
+  onLayerChange,
+  compact = false,
+  overview = false,
+  sortBy = "default",
+}: AttackMatrixProps) {
   const { theme } = useHeatTheme();
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -110,12 +127,14 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
     if (!onLayerChange) return;
     setSelected(id);
     setAnchorRect(el.getBoundingClientRect());
-    if (!layer[id]) onLayerChange({ ...layer, [id]: { score: 100 } });
   }
 
+  // Upsert: opening the editor doesn't touch the layer — an entry is only
+  // created once the user actually sets a score or comment.
   function updateEntry(id: string, patch: Partial<{ score: number; comment: string }>) {
-    if (!onLayerChange || !layer[id]) return;
-    onLayerChange({ ...layer, [id]: { ...layer[id], ...patch } });
+    if (!onLayerChange) return;
+    const base = layer[id] ?? { score: 0 };
+    onLayerChange({ ...layer, [id]: { ...base, ...patch } });
   }
 
   function removeEntry(id: string) {
@@ -232,7 +251,7 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
                 </button>
               )}
               <div className="attack-matrix__column-body">
-                {visible.map((tech) => (
+                {sortTechniques(visible, layer, sortBy).map((tech) => (
                   <TechniqueGroup
                     key={tech.id}
                     tech={tech}
@@ -245,6 +264,7 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
                     onToggleExpand={() => toggleExpanded(tech.id)}
                     onOpenEditor={openEditor}
                     query={normalizedQuery}
+                    sortBy={sortBy}
                   />
                 ))}
               </div>
@@ -283,7 +303,7 @@ export default function AttackMatrix({ catalog, layer, onLayerChange, compact = 
         </AnchoredPopover>
       )}
 
-      {editable && selectedTech && selectedEntry && anchorRect && (
+      {editable && selectedTech && anchorRect && (
         <CellEditor
           tech={selectedTech}
           entry={selectedEntry}
@@ -309,6 +329,7 @@ interface TechniqueGroupProps {
   onToggleExpand: () => void;
   onOpenEditor: (id: string, el: HTMLElement) => void;
   query: string;
+  sortBy: TechniqueSort;
 }
 
 function TechniqueGroup({
@@ -322,10 +343,15 @@ function TechniqueGroup({
   onToggleExpand,
   onOpenEditor,
   query,
+  sortBy,
 }: TechniqueGroupProps) {
   const hasSubtechniques = tech.subtechniques.length > 0;
   const isExpanded = expanded || forceExpand;
-  const visibleSubs = tech.subtechniques.filter((s) => matchesQuery(s, query));
+  const visibleSubs = sortSubtechniques(
+    tech.subtechniques.filter((s) => matchesQuery(s, query)),
+    layer,
+    sortBy
+  );
 
   return (
     <div className={`attack-matrix__group${isExpanded && hasSubtechniques ? " attack-matrix__group--open" : ""}`}>
@@ -529,7 +555,9 @@ function AnchoredPopover({
 
 interface CellEditorProps {
   tech: TechniqueSummary;
-  entry: { score: number; comment?: string };
+  /** Absent while the technique isn't in the layer yet — the editor shows
+   * defaults and the first change creates the entry. */
+  entry?: { score: number; comment?: string };
   anchorRect: DOMRect;
   onScore: (score: number) => void;
   onComment: (comment: string) => void;
@@ -538,6 +566,7 @@ interface CellEditorProps {
 }
 
 function CellEditor({ tech, entry, anchorRect, onScore, onComment, onRemove, onClose }: CellEditorProps) {
+  const score = entry?.score ?? 0;
   return (
     <AnchoredPopover anchorRect={anchorRect} width={260} onClose={onClose} className="attack-matrix__editor">
       <div className="attack-matrix__editor-header">
@@ -552,23 +581,25 @@ function CellEditor({ tech, entry, anchorRect, onScore, onComment, onRemove, onC
       <label className="attack-matrix__editor-field">
         <span>Score</span>
         <div className="attack-matrix__editor-score">
-          <input type="range" min={0} max={100} value={entry.score} onChange={(e) => onScore(Number(e.target.value))} />
+          <input type="range" min={0} max={100} value={score} onChange={(e) => onScore(Number(e.target.value))} />
           <input
             type="number"
             min={0}
             max={100}
-            value={entry.score}
+            value={score}
             onChange={(e) => onScore(Math.max(0, Math.min(100, Number(e.target.value))))}
           />
         </div>
       </label>
       <label className="attack-matrix__editor-field">
         <span>Comment</span>
-        <textarea rows={3} value={entry.comment ?? ""} onChange={(e) => onComment(e.target.value)} />
+        <textarea rows={3} value={entry?.comment ?? ""} onChange={(e) => onComment(e.target.value)} />
       </label>
-      <button className="btn btn-danger attack-matrix__editor-remove" onClick={onRemove}>
-        Remove from matrix
-      </button>
+      {entry && (
+        <button className="btn btn-danger attack-matrix__editor-remove" onClick={onRemove}>
+          Remove from matrix
+        </button>
+      )}
     </AnchoredPopover>
   );
 }

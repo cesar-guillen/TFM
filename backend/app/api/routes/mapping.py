@@ -1,9 +1,14 @@
+import os
+
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.api.routes import matrix
+from app.core import warmup
 from app.core.config import settings
+from app.core.llm import warm_chat_model
 from app.ingest.jobs import get_job as get_ingest_job
+from app.mapping import history
 from app.mapping.aggregate import aggregate_mappings
 from app.mapping.jobs import create_job, get_job, update_job
 from app.mapping.mapper import map_report
@@ -15,6 +20,21 @@ def _process(report_id: str) -> None:
     """Background stage 6+7 run; mirrors the ingest job pattern (poll via
     GET /reports/{report_id}/map/status) since mapping is minutes-slow on CPU."""
     try:
+        # If the chat model isn't resident (first run after startup racing the
+        # warm-up thread, or evicted after idle under a KEEP_ALIVE duration),
+        # the first chunk verdicts would silently absorb the whole model-load
+        # wait. Surface it as its own job phase instead, and keep
+        # app.core.warmup current so the UI can word it per-device.
+        if not warmup.is_chat_model_loaded():
+            update_job(report_id, status="warming")
+            warmup.mark_loading()
+            try:
+                warm_chat_model()
+            except Exception:
+                warmup.mark_unavailable()
+                raise
+            warmup.mark_ready(warmup.detect_device())
+
         update_job(report_id, status="retrieving")
 
         def on_progress(chunks_mapped: int, chunk_count: int, mappings_so_far) -> None:
@@ -34,6 +54,17 @@ def _process(report_id: str) -> None:
         mappings = map_report(report_id, on_progress=on_progress)
         update_job(report_id, status="aggregating")
         layer = aggregate_mappings(mappings)
+
+        # Name the finished layer after the report (the aggregate default is
+        # generic) and persist it to the on-disk history, so it stays openable
+        # after the next upload replaces the current layer.
+        ingest_job = get_ingest_job(report_id)
+        source_filename = ingest_job.filename if ingest_job else report_id
+        layer["name"] = os.path.splitext(source_filename)[0]
+
+        # Save first: save_layer stamps `tfm_saved_id` into the layer dict, so
+        # the published current layer tells the editor which entry to update.
+        history.save_layer(report_id, layer["name"], source_filename, layer)
         matrix.set_current_layer(layer)
         update_job(report_id, status="done", layer=layer)
     except httpx.HTTPError as exc:

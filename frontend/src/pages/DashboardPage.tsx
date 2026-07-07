@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { startMapping, type IngestStarted } from "../api/client";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  deleteSavedMatrix,
+  getMatrixHistory,
+  startMapping,
+  type IngestStarted,
+  type SavedMatrixSummary,
+} from "../api/client";
+import MatrixHistoryMenu from "../components/MatrixHistoryMenu";
 import MatrixOverview from "../components/MatrixOverview";
 import ProgressBubble from "../components/ProgressBubble";
 import ProgressPanel from "../components/ProgressPanel";
@@ -10,18 +17,28 @@ import { useIngestJob } from "../hooks/useIngestJob";
 import { useMappingJob } from "../hooks/useMappingJob";
 import { layerToState } from "../types/attack";
 
+/** The main dashboard is the matrix library: upload a new report, or open,
+ * edit and delete previously computed matrices. While a report is being
+ * processed it switches to the live run view (matrix preview filling in +
+ * floating progress bubble), and back to the library afterwards. */
 export default function DashboardPage() {
   const [started, setStarted] = useState<IngestStarted | null>(null);
   const [mappingReportId, setMappingReportId] = useState<string | null>(null);
   const [mapAttempt, setMapAttempt] = useState(0);
   const [startingMap, setStartingMap] = useState(false);
+  const [showDoneToast, setShowDoneToast] = useState(false);
+  // Library state (only shown/fetched while no run is active).
+  const [entries, setEntries] = useState<SavedMatrixSummary[] | null>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const job = useIngestJob(started?.report_id ?? null);
   const mappingJob = useMappingJob(mappingReportId, mapAttempt);
   const { catalog, loading, error } = useAttackData();
+  const navigate = useNavigate();
 
   // A new upload replaces the previous report *and* its mapping run.
   function handleStarted(next: IngestStarted) {
     setMappingReportId(null);
+    setShowDoneToast(false);
     setStarted(next);
   }
 
@@ -50,17 +67,107 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ingestDone, mappingReportId]);
 
-  // Before the first report is uploaded: just the upload window, centered.
+  // Pop the "matrix ready" toast when the mapping run reaches "done".
+  const mappingDone = mappingJob?.status === "done";
+  useEffect(() => {
+    if (mappingDone) setShowDoneToast(true);
+  }, [mappingDone]);
+
+  // (Re)load the library whenever it's the visible view — including on return
+  // from a run, which will have added its own entry.
+  useEffect(() => {
+    if (started) return;
+    let cancelled = false;
+    setLibraryError(null);
+    getMatrixHistory()
+      .then((list) => !cancelled && setEntries(list))
+      .catch((err) => !cancelled && setLibraryError(err instanceof Error ? err.message : String(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, [started]);
+
+  async function handleDelete(e: React.MouseEvent, id: string) {
+    e.stopPropagation(); // don't also open the card
+    try {
+      await deleteSavedMatrix(id);
+      setEntries((list) => list?.filter((entry) => entry.id !== id) ?? null);
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // No active run: the library — upload a new report, or open a saved matrix.
   if (!started) {
     return (
-      <div className="dashboard-hero">
-        <div className="dashboard-hero__card">
+      <div className="dashboard-main">
+        <section className="dashboard-main__upload">
           <h1 className="dashboard-hero__title">Upload a security report</h1>
           <p className="dashboard-hero__subtitle">
             Drop an incident report, pentest result, or security policy PDF to generate its ATT&amp;CK matrix.
           </p>
           <UploadPanel variant="hero" onStarted={handleStarted} />
-        </div>
+        </section>
+
+        <section className="matrix-library">
+          <div className="matrix-library__header">
+            <h2>Your matrices</h2>
+            {entries && entries.length > 0 && (
+              <span className="matrix-library__count">{entries.length}</span>
+            )}
+            <Link to="/matrix" className="btn matrix-library__editor-link">
+              Open editor ↗
+            </Link>
+          </div>
+
+          {libraryError && <p className="matrix-library__empty">{libraryError}</p>}
+          {!libraryError && entries === null && <p className="matrix-library__empty">Loading…</p>}
+          {!libraryError && entries?.length === 0 && (
+            <p className="matrix-library__empty">
+              No matrices yet — upload a report above to generate your first one, or build one by hand in
+              the editor and save it.
+            </p>
+          )}
+
+          {entries && entries.length > 0 && (
+            <div className="matrix-library__grid">
+              {entries.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="matrix-card"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/matrix?saved=${entry.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") navigate(`/matrix?saved=${entry.id}`);
+                  }}
+                  title="Open in the matrix editor"
+                >
+                  <div className="matrix-card__top">
+                    <span className="matrix-card__name">{entry.name}</span>
+                    <button
+                      className="matrix-card__delete"
+                      aria-label={`Delete ${entry.name}`}
+                      title="Delete this matrix"
+                      onClick={(e) => void handleDelete(e, entry.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <span className="matrix-card__meta">
+                    {entry.filename ? `From ${entry.filename}` : "Built by hand"}
+                  </span>
+                  <div className="matrix-card__footer">
+                    <span className="badge">{entry.technique_count} techniques</span>
+                    <span className="matrix-card__date">
+                      {new Date(entry.updated_at ?? entry.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     );
   }
@@ -71,11 +178,18 @@ export default function DashboardPage() {
   // layer is rebuilt after every chunk).
   const displayedState = mappingJob?.layer ? layerToState(mappingJob.layer) : {};
 
-  // As soon as an upload starts (not once it finishes): the matrix fills the
-  // page, and pipeline progress lives in a draggable floating bubble on top of
-  // it, so the user sees the pipeline actually moving instead of staring at a
-  // spinner for the ~100s+ embedding takes. "New report" goes back to the
-  // upload hero (which resets the mapping state via handleStarted).
+  // While the pipeline is still updating the matrix (anything before a
+  // terminal mapping state), the preview pulses so it reads as "in progress".
+  const computing =
+    (job !== null && job.status !== "done" && job.status !== "error") ||
+    (mappingJob !== null && mappingJob.status !== "done" && mappingJob.status !== "error") ||
+    (job?.status === "done" && mappingJob === null); // mapping about to auto-start
+
+  // Active run: the matrix fills the page and progress lives in a draggable
+  // floating bubble on top of it, so the user sees the pipeline actually
+  // moving instead of staring at a spinner for the ~100s+ embedding takes.
+  // "All matrices" goes back to the library (which refetches, so the run
+  // that just finished is in it).
   return (
     <div className="dashboard-loaded">
       <section className="dashboard-loaded__matrix">
@@ -88,10 +202,12 @@ export default function DashboardPage() {
               onClick={() => {
                 setStarted(null);
                 setMappingReportId(null);
+                setShowDoneToast(false);
               }}
             >
-              New report
+              ← All matrices
             </button>
+            <MatrixHistoryMenu label="History" />
             <Link to="/matrix" className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}>
               Open full matrix ↗
             </Link>
@@ -109,7 +225,7 @@ export default function DashboardPage() {
               <p>{error}</p>
             </div>
           )}
-          {catalog && <MatrixOverview catalog={catalog} layer={displayedState} />}
+          {catalog && <MatrixOverview catalog={catalog} layer={displayedState} computing={computing} />}
         </div>
       </section>
 
@@ -121,6 +237,29 @@ export default function DashboardPage() {
           generateDisabled={startingMap}
         />
       </ProgressBubble>
+
+      {showDoneToast && (
+        <div className="matrix-toast" role="status">
+          <span className="matrix-toast__icon">✓</span>
+          <div className="matrix-toast__body">
+            <strong>Matrix generated</strong>
+            <span>
+              {mappingJob?.layer ? `${mappingJob.layer.techniques.length} techniques identified in ` : ""}
+              {started.filename}
+            </span>
+          </div>
+          <Link to="/matrix" className="btn btn-primary matrix-toast__link">
+            Open full matrix →
+          </Link>
+          <button
+            className="matrix-toast__dismiss"
+            onClick={() => setShowDoneToast(false)}
+            aria-label="Dismiss notification"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
       - UPLOAD_DIR=${UPLOAD_DIR:-/data/uploads}
+      - LAYERS_DIR=${LAYERS_DIR:-/data/layers}
       - CHROMA_PERSIST_DIR=${CHROMA_PERSIST_DIR:-/data/chroma}
       - ATTACK_STIX_DIR=${ATTACK_STIX_DIR:-/data/attack}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { IngestStatus, IngestStatusValue, MappingStatus } from "../api/client";
+import type { IngestStatus, IngestStatusValue, MappingStatus, WarmupStatus } from "../api/client";
+import { useWarmup } from "../hooks/useWarmup";
 
 interface ProgressPanelProps {
   job: IngestStatus | null;
@@ -7,6 +8,15 @@ interface ProgressPanelProps {
   /** Retry hook for a failed run — mapping starts automatically otherwise. */
   onGenerate: () => void;
   generateDisabled?: boolean;
+}
+
+/** Warm-up wording matched to the hardware actually in use — the device is
+ * only knowable once Ollama has something loaded, so until then stay neutral,
+ * and a CPU-only machine never sees "GPU". */
+function warmupLabel(warmup: WarmupStatus | null): string {
+  if (warmup?.device === "gpu") return "Setting up the GPU — loading the LLM into video memory…";
+  if (warmup?.device === "cpu") return "Loading the LLM into memory (CPU mode)…";
+  return "Warming up the local LLM…";
 }
 
 const STEPS: { key: IngestStatusValue; label: string }[] = [
@@ -19,6 +29,7 @@ const STEPS: { key: IngestStatusValue; label: string }[] = [
 const STEP_ORDER = STEPS.map((s) => s.key);
 
 const MAPPING_LABELS: Record<MappingStatus["status"], string> = {
+  warming: "Warming up the local LLM…", // replaced by device-aware wording below
   retrieving: "Retrieving candidate techniques…",
   mapping: "Mapping chunks with the LLM…",
   aggregating: "Aggregating techniques…",
@@ -30,7 +41,8 @@ function MappingSection({
   mappingJob,
   onGenerate,
   generateDisabled,
-}: ProgressPanelProps) {
+  warmup,
+}: ProgressPanelProps & { warmup: WarmupStatus | null }) {
   // Only reachable once ingest is done. Mapping auto-starts from the
   // dashboard, so before the first status poll lands there's just a beat of
   // "starting" — no button.
@@ -54,6 +66,17 @@ function MappingSection({
         <button className="btn" onClick={onGenerate}>
           Retry
         </button>
+      </div>
+    );
+  }
+
+  if (mappingJob.status === "warming") {
+    return (
+      <div className="mapping-section">
+        <span className="badge badge-accent">{warmupLabel(warmup)}</span>
+        <p className="mapping-section__hint">
+          The model has to be loaded before mapping can start — this happens once, then stays warm.
+        </p>
       </div>
     );
   }
@@ -85,6 +108,15 @@ function MappingSection({
 
 export default function ProgressPanel({ job, mappingJob, onGenerate, generateDisabled }: ProgressPanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Poll the LLM warm-up state while the pipeline is running: it drives the
+  // wording of the mapping job's "warming" phase, and lets the user know
+  // during ingest that the model is already loading in the background.
+  const pipelineRunning =
+    job !== null &&
+    job.status !== "error" &&
+    (mappingJob === null || (mappingJob.status !== "done" && mappingJob.status !== "error"));
+  const warmup = useWarmup(pipelineRunning);
 
   // Keep the step the pipeline is currently on in view: whenever ingest or
   // mapping advances, scroll the active element into the panel's viewport
@@ -141,9 +173,21 @@ export default function ProgressPanel({ job, mappingJob, onGenerate, generateDis
           );
         })}
       </div>
+      {job.status !== "done" && warmup?.status === "loading" && (
+        <p className="warmup-note">
+          <span className="warmup-note__spinner" aria-hidden="true" />
+          {warmupLabel(warmup)} It loads in the background while your report is processed.
+        </p>
+      )}
       {job.status === "done" && (
         <div data-progress-active="">
-          <MappingSection job={job} mappingJob={mappingJob} onGenerate={onGenerate} generateDisabled={generateDisabled} />
+          <MappingSection
+            job={job}
+            mappingJob={mappingJob}
+            onGenerate={onGenerate}
+            generateDisabled={generateDisabled}
+            warmup={warmup}
+          />
         </div>
       )}
     </div>

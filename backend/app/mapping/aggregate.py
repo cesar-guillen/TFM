@@ -52,15 +52,15 @@ def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19")
     mapped = set(by_technique)
     for parent_id in sorted({tid.split(".")[0] for tid in mapped if "." in tid} - mapped):
         subs = sorted(tid for tid in mapped if tid.startswith(parent_id + "."))
+        listing = "\n".join(
+            f"{i}. {by_technique[sub_id][0].technique_name} ({sub_id})"
+            for i, sub_id in enumerate(subs, 1)
+        )
         techniques.append(
             {
                 "techniqueID": parent_id,
                 "score": PARENT_OF_MAPPED_SUB_SCORE,
-                "comment": (
-                    "Not mapped directly — highlighted because sub-technique"
-                    f"{'s' if len(subs) > 1 else ''} {', '.join(subs)} matched; "
-                    "expand to see the evidence."
-                ),
+                "comment": f"Identified subtechniques:\n{listing}",
                 "enabled": True,
             }
         )

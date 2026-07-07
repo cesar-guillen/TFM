@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     upload_dir: str = "/data/uploads"
+    layers_dir: str = "/data/layers"
     chroma_persist_dir: str = "/data/chroma"
     attack_stix_dir: str = "/data/attack"
     attack_collection: str = "attack_techniques"

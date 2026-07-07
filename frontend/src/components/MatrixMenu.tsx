@@ -4,11 +4,12 @@ import { HEAT_THEMES, cssGradient, themeById, useHeatTheme } from "../theme/heat
 interface MatrixMenuProps {
   mappedCount: number;
   onExport: () => void;
+  onExportSvg: () => void;
   onImport: (file: File) => void;
   onClear: () => void;
 }
 
-export default function MatrixMenu({ mappedCount, onExport, onImport, onClear }: MatrixMenuProps) {
+export default function MatrixMenu({ mappedCount, onExport, onExportSvg, onImport, onClear }: MatrixMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -69,6 +70,17 @@ export default function MatrixMenu({ mappedCount, onExport, onImport, onClear }:
             }}
           >
             Export layer (JSON)
+          </button>
+          <button
+            className="matrix-menu__item"
+            role="menuitem"
+            disabled={mappedCount === 0}
+            onClick={() => {
+              setOpen(false);
+              onExportSvg();
+            }}
+          >
+            Export matrix (SVG)
           </button>
           <button
             className="matrix-menu__item matrix-menu__item--danger"

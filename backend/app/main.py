@@ -4,9 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import attack, chat, ingest, mapping, matrix
+from app.api.routes import attack, chat, ingest, mapping, matrix, system
 from app.attack.build_kb import build_kb
 from app.attack.embeddings import embed_texts
+from app.core import warmup
 from app.core.config import settings
 from app.core.llm import warm_chat_model
 
@@ -19,12 +20,19 @@ def _warm_models() -> None:
     and the small embed model fits in the VRAM left over — loading in the
     other order ends with chat evicting embed. With OLLAMA_KEEP_ALIVE=-1
     (docker-compose.yml) they then stay resident. Errors are ignored — real
-    requests surface them with proper messages."""
-    for warm in (warm_chat_model, lambda: embed_texts(["warmup"])):
-        try:
-            warm()
-        except Exception:
-            pass
+    requests surface them with proper messages. Progress is reported into
+    app.core.warmup so the UI can show "GPU being set up / LLM warming up"
+    if an upload races this."""
+    warmup.mark_loading()
+    try:
+        warm_chat_model()
+        warmup.mark_ready(warmup.detect_device())
+    except Exception:
+        warmup.mark_unavailable()
+    try:
+        embed_texts(["warmup"])
+    except Exception:
+        pass
 
 
 @asynccontextmanager
@@ -51,6 +59,7 @@ app.include_router(chat.router, prefix="/api")
 app.include_router(matrix.router, prefix="/api")
 app.include_router(mapping.router, prefix="/api")
 app.include_router(attack.router, prefix="/api")
+app.include_router(system.router, prefix="/api")
 
 
 @app.get("/health")

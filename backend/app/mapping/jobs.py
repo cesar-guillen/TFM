@@ -6,7 +6,7 @@ import threading
 from dataclasses import dataclass
 from typing import Literal
 
-Status = Literal["retrieving", "mapping", "aggregating", "done", "error"]
+Status = Literal["warming", "retrieving", "mapping", "aggregating", "done", "error"]
 
 
 @dataclass

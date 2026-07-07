@@ -14,6 +14,8 @@ dist/
 
 data/uploads/*
 !data/uploads/.gitkeep
+data/layers/*
+!data/layers/.gitkeep
 data/chroma/*
 !data/chroma/.gitkeep
 data/attack/*
