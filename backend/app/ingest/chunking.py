@@ -23,11 +23,27 @@ BANNER_RE = re.compile(r"do not distribute|confidential|proprietary|tlp:\s*(clea
 # detect, or clean up — not as observed adversary activity — so mapping them
 # yields false positives. Matched against each heading with its numeric prefix
 # removed; a match anywhere in the heading path taints the whole subtree.
+# Bilingual: English + Spanish equivalents (stems chosen to stop before
+# accented characters where possible; [oó]-style classes cover the rest, since
+# OCR'd PDFs sometimes lose accents).
 GUIDANCE_RE = re.compile(
     r"remediat|mitigat|recommend|countermeasure|containment|eradicat|\brecovery\b"
     r"|lessons learned|post-incident|action plan|action items|next steps"
     r"|best practice|hardening|how to protect|prevention|defensive measures"
-    r"|protective measures|detection opportunit|hunting quer|sigma rule|yara rule",
+    r"|protective measures|detection opportunit|hunting quer|sigma rule|yara rule"
+    # Spanish: remediación/mitigación/recomendaciones, contramedidas,
+    # contención/erradicación/recuperación (IR response phases), lecciones
+    # aprendidas, post-incidente, plan de acción, próximos pasos, buenas/
+    # mejores prácticas, acciones/medidas correctivas, endurecimiento/
+    # bastionado (hardening), prevención/preventivas, medidas defensivas/de
+    # protección, cómo proteger, oportunidades de detección, reglas sigma/yara.
+    r"|remediac|mitigac|recomendac|contramedida"
+    r"|contenci[oó]n|erradicac|recuperaci[oó]n"
+    r"|lecciones aprendidas|post-?incidente|plan de acci|pr[oó]ximos pasos"
+    r"|buenas pr[aá]cticas|mejores pr[aá]cticas|correctiv"
+    r"|endurecimiento|bastionado|prevenci|preventiv|medidas defensivas"
+    r"|medidas de protecci|c[oó]mo proteger|oportunidades de detecci"
+    r"|reglas? sigma|reglas? yara",
     re.I,
 )
 
@@ -35,7 +51,17 @@ GUIDANCE_RE = re.compile(
 BOILERPLATE_RE = re.compile(
     r"table of contents|^contents$|document control|references$|bibliography"
     r"|acknowledg|about us|disclaimer|legal notice|copyright|revision history"
-    r"|version history|document history|glossary|distribution list",
+    r"|version history|document history|glossary|distribution list"
+    # Spanish: índice (TOC — also "índice de figuras"), tabla de contenido(s),
+    # control del documento, referencias, bibliografía, agradecimientos,
+    # sobre nosotros/quiénes somos, aviso legal, descargo/exención de
+    # responsabilidad, derechos de autor, historial de versiones/revisiones/
+    # cambios, control de versiones, glosario, lista de distribución.
+    r"|[ií]ndice|tabla de contenidos?|control del? documento|referencias$"
+    r"|bibliograf|agradecimient|sobre nosotros|qui[eé]nes somos"
+    r"|aviso legal|descargo de responsabilidad|exenci[oó]n de responsabilidad"
+    r"|derechos de autor|historial de (versiones|revisiones|cambios)"
+    r"|control de versiones|glosario|lista de distribuci",
     re.I,
 )
 

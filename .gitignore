@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 CLAUDE.md
-.env.example
+
 
 .claude/settings.local.json
 
@@ -10,7 +10,6 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-.env
 
 data/uploads/*
 !data/uploads/.gitkeep

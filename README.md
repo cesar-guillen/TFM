@@ -8,13 +8,14 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture/pipeline description and de
 
 ## Status
 
-This is an early scaffold. What works end-to-end today:
+The whole pipeline works end-to-end:
 
-- `POST /api/ingest` — upload a PDF, get back its Markdown conversion (via `pymupdf4llm`).
-- `app.attack.build_kb` — one-time offline builder that downloads the Enterprise ATT&CK STIX bundle, extracts the ~700 active techniques, embeds them via Ollama, and indexes them into a Chroma collection. See CLAUDE.md for the command.
-- Frontend shell with a working upload panel, and placeholder Matrix/Chat panels.
+- **Ingest**: upload a PDF → Markdown conversion (`pymupdf4llm`) → section-aware chunking with role filtering (remediation/boilerplate sections excluded) → embedding into a local Chroma store, with live progress in the UI.
+- **Retrieval**: hybrid dense + BM25 search over the bundled ATT&CK v19.1 knowledge base (~700 techniques, pre-embedded seed ships in the repo), fused by reciprocal rank fusion.
+- **Mapping**: a local LLM (via Ollama) judges which candidate techniques each chunk actually evidences — schema-constrained output, verbatim evidence quotes checked against the source text — then results are aggregated into a Navigator-style layer with per-technique evidence comments.
+- **UI**: a matrix library dashboard (open/edit/delete previously computed matrices, upload new reports), a live-updating matrix preview during runs, and a full Navigator-style editor with scoring, sorting, JSON/SVG export, and save-to-library.
 
-Not implemented yet: chunking and hybrid (BM25 + dense) retrieval against the report, LLM-based technique mapping, and aggregation — i.e. pipeline stages 3, 4, 6, 7 in CLAUDE.md. `/api/chat` and `/api/matrix` are stubs.
+Not implemented yet: the chat interface (`/api/chat` is a stub) and a reranker over the fused retrieval candidates.
 
 ## Stack
 
@@ -49,6 +50,16 @@ docker-compose.yml
 
 ## Running it
 
+### Guided (recommended)
+
+```
+./install.sh
+```
+
+The installer surveys the machine (OS/WSL, CPU cores, AVX, RAM, NVIDIA GPU + VRAM), recommends the model profile that fits it — full-power `llama3.1:8b`, the low-memory `llama3.1:8b` tier for ~16 GB hosts, or the light `llama3.2:3b` fallback — writes `.env` accordingly (backing up any existing one), offers to install the NVIDIA Container Toolkit when a GPU is present but Docker can't use it yet, and launches the stack with the GPU override when the GPU is usable. `./install.sh -y` accepts every recommendation non-interactively; `--cpu` ignores the GPU. Re-run it any time to switch profiles.
+
+### Manual
+
 ```
 docker compose up --build
 ```
@@ -78,7 +89,7 @@ docker compose exec backend python -m app.attack.build_kb --refresh
 
 ### GPU acceleration (optional, ~10x faster mapping)
 
-With an NVIDIA GPU and the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed:
+`./install.sh` handles all of this automatically (detects the GPU, installs the toolkit on apt-based systems, launches with the override). Manually: with an NVIDIA GPU and the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed:
 
 ```
 sudo apt-get install -y nvidia-container-toolkit
