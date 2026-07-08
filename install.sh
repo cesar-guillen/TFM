@@ -277,29 +277,62 @@ if ! ask_yn "Build & start the stack now?" y; then
   exit 0
 fi
 
-say "  ${DIM}Running: ${COMPOSE[*]} up -d --build${RESET}"
-if ! "${COMPOSE[@]}" up -d --build; then
+SPINNER='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+spin() { # spin <iteration> <start-epoch> <status-text>
+  printf '\r  %s%s%s %4ss %s%-58s%s' "$CYAN" "${SPINNER:$(($1 % 10)):1}" "$RESET" "$(( $(date +%s) - $2 ))" "$DIM" "${3:0:58}" "$RESET"
+}
+
+say "  ${DIM}Building images (${COMPOSE[*]} build)…${RESET}"
+if ! "${COMPOSE[@]}" build; then
+  fail "docker compose build failed — see the output above."
+  exit 1
+fi
+
+# Bring up Ollama + the one-shot model puller *first*, on their own: a plain
+# `up -d` on the whole stack would sit blocked on ollama-init with a bare
+# "Waiting" counter (the backend depends on it completing) and the user would
+# see zero download progress. This way the pull gets its own visible phase.
+say "  ${DIM}Starting Ollama and fetching models (cached after the first run)…${RESET}"
+if ! "${COMPOSE[@]}" up -d ollama ollama-init; then
   fail "docker compose failed — see the output above."
   exit 1
 fi
 
-# First boot pulls the models (the 8b chat model is ~5 GB), and the backend
-# deliberately waits for that before starting — so give it plenty of rope and
-# relay ollama-init's progress while we wait.
+INIT_ID=$("${COMPOSE[@]}" ps -aq ollama-init 2>/dev/null | head -1)
+START=$(date +%s); i=0
+while [ -n "$INIT_ID" ] && [ "$(docker inspect -f '{{.State.Status}}' "$INIT_ID" 2>/dev/null)" = "running" ]; do
+  # ollama pull rewrites its progress line with \r — take the newest segment.
+  PULL=$(docker logs --tail 2 "$INIT_ID" 2>&1 | tail -1 | sed 's/.*\r//' | tr -d '\n')
+  spin "$i" "$START" "${PULL:-waiting for the Ollama server…}"
+  i=$((i + 1)); sleep 2
+done
+printf '\r%-80s\r' ' '
+if [ -n "$INIT_ID" ] && [ "$(docker inspect -f '{{.State.ExitCode}}' "$INIT_ID" 2>/dev/null)" != "0" ]; then
+  fail "Model download failed. Inspect with: ${BOLD}${COMPOSE[*]} logs ollama-init${RESET}"
+  say  "        (Common causes: no network, or not enough disk space — check 'df -h'.)"
+  exit 1
+fi
+ok "Models ready."
+
+say "  ${DIM}Starting the stack…${RESET}"
+if ! "${COMPOSE[@]}" up -d; then
+  fail "docker compose failed — see the output above."
+  exit 1
+fi
+
 say ""
-say "  Waiting for the backend to come up ${DIM}(first install downloads the models — can take a while)${RESET}"
-SPINNER='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'; START=$(date +%s); HEALTHY=0
-for i in $(seq 1 720); do
+say "  Waiting for the backend to come up…"
+START=$(date +%s); HEALTHY=0
+for i in $(seq 1 120); do
   if curl -fsS -m 2 http://localhost:8000/health >/dev/null 2>&1; then HEALTHY=1; break; fi
-  PULL=$("${COMPOSE[@]}" logs --tail 1 ollama-init 2>/dev/null | tail -1 | sed 's/^[^|]*| //' | cut -c1-56)
-  printf '\r  %s%s%s %3ss %s%-58s%s' "$CYAN" "${SPINNER:$((i % 10)):1}" "$RESET" "$(( $(date +%s) - START ))" "$DIM" "${PULL:-starting containers…}" "$RESET"
-  sleep 5
+  spin "$i" "$START" "waiting on http://localhost:8000/health…"
+  sleep 3
 done
 printf '\r%-80s\r' ' '
 
 if [ "$HEALTHY" = 0 ]; then
-  fail "Backend didn't answer on http://localhost:8000/health after 60 minutes."
-  say  "        Inspect with: ${BOLD}${COMPOSE[*]} logs backend ollama-init${RESET}"
+  fail "Backend didn't answer on http://localhost:8000/health after 6 minutes (models were already pulled, so this is unexpected)."
+  say  "        Inspect with: ${BOLD}${COMPOSE[*]} logs backend${RESET}"
   exit 1
 fi
 
