@@ -38,7 +38,6 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
       # Keep in sync with OLLAMA_NUM_PARALLEL above (see docker-compose.yml).
       - MAP_WORKERS=${MAP_WORKERS:-4}
-      # Leaner mapping prompts for CPU (see docker-compose.cpu.yml for why).
-      - MAP_CANDIDATES=${MAP_CANDIDATES:-6}
-      - MAP_DESC_CHARS=${MAP_DESC_CHARS:-170}
+      # Thread auto-sizing only — prompt size stays at full quality (see
+      # docker-compose.cpu.yml for why).
       - MAP_NUM_THREAD=${MAP_NUM_THREAD:--1}

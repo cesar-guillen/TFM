@@ -34,10 +34,9 @@ services:
     environment:
       # Keep in sync with OLLAMA_NUM_PARALLEL above (see docker-compose.yml).
       - MAP_WORKERS=${MAP_WORKERS:-4}
-      # Leaner mapping prompts for CPU: prompt reading (prefill) is ~60-70% of
-      # a chunk's cost there, so offer 6 candidates at 170 desc chars instead
-      # of the full-quality 8/250, and size llama.cpp threads to the pinned
-      # cores (-1 = auto) so they never oversubscribe (a cliff in VMs).
-      - MAP_CANDIDATES=${MAP_CANDIDATES:-6}
-      - MAP_DESC_CHARS=${MAP_DESC_CHARS:-170}
+      # Size llama.cpp threads to the pinned cores (-1 = auto) so they never
+      # oversubscribe them (a measured cliff in VMs). Prompt size stays at the
+      # full-quality defaults (MAP_CANDIDATES=8 / MAP_DESC_CHARS=250): leaner
+      # prompts measured ~22% faster but visibly changed the verdicts —
+      # revisit with the eval harness before trading accuracy for speed.
       - MAP_NUM_THREAD=${MAP_NUM_THREAD:--1}
