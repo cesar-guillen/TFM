@@ -106,3 +106,41 @@ Plain `docker compose up` keeps working on CPU-only machines.
 ## Next steps
 
 Per the pipeline in CLAUDE.md, the next stage to build is chunking (stage 3) and hybrid retrieval (stage 4) against the report, now that the ATT&CK knowledge base (stage 5) is in place.
+
+1. Base packages
+
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git
+2. Install Docker Engine + Compose v2 (official Docker repo)
+
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+3. Run Docker without sudo + start the daemon
+
+sudo usermod -aG docker $USER
+sudo systemctl enable --now docker
+Log out and back in (or reboot) so the group change applies, then verify:
+
+
+docker run --rm hello-world
+docker compose version        # must say v2.x
+4. Get the project
+
+git clone <your-repo-url> TFM
+cd TFM
+5. Launch — pick ONE profile for the machine
+
+# No GPU, more than 8 GB RAM (the usual case):
+docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
+
+# No GPU, 8 GB RAM or less:
+docker compose -f docker-compose.yml -f docker-compose.basic.yml up -d --build
+
+# NVIDIA GPU (needs step 7 first):
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
