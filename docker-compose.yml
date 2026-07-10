@@ -45,11 +45,6 @@ services:
     image: ollama/ollama:latest
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
-    # Optional core pinning for CPU-only machines: e.g. "0-5" restricts
-    # inference to cores 0-5, leaving the rest fully free so the host stays
-    # responsive during minutes-long mapping runs. Empty (the default) means
-    # no restriction. install.sh offers this on CPU-mode installs.
-    cpuset: ${OLLAMA_CPUSET:-}
     environment:
       # Execution slots for concurrent requests: the mapping stage sends
       # MAP_WORKERS chunk verdicts at once (llama.cpp batches their decode,
@@ -75,12 +70,15 @@ services:
       - ollama
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      # Models to ensure are present, as a container env var so the profile
+      # overlays can swap them (docker-compose.basic.yml pulls the 3b model).
+      - MODELS=${OLLAMA_EMBED_MODEL:-nomic-embed-text} ${OLLAMA_MODEL:-llama3.1:8b}
     entrypoint: /bin/sh
     command:
       - -c
       - |
         until ollama ls >/dev/null 2>&1; do echo "waiting for ollama server..."; sleep 2; done
-        for m in ${OLLAMA_EMBED_MODEL:-nomic-embed-text} ${OLLAMA_MODEL:-llama3.1:8b}; do
+        for m in $$MODELS; do
           if ollama show "$$m" >/dev/null 2>&1; then
             echo "$$m already present"
           else

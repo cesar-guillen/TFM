@@ -50,21 +50,23 @@ docker-compose.yml
 
 ## Running it
 
-### Guided (recommended)
+Pick the profile that matches your machine — one command, nothing else to configure:
 
-```
-./install.sh
-```
+| Your machine | Command |
+|---|---|
+| NVIDIA GPU, >8 GB RAM | `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build` |
+| No GPU, >8 GB RAM | `docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build` |
+| No GPU, ≤8 GB RAM | `docker compose -f docker-compose.yml -f docker-compose.basic.yml up -d --build` |
 
-The installer surveys the machine (OS/WSL, CPU cores, AVX, RAM, NVIDIA GPU + VRAM), recommends the model profile that fits it — full-power `llama3.1:8b`, the low-memory `llama3.1:8b` tier for ~16 GB hosts, or the light `llama3.2:3b` fallback — writes `.env` accordingly (backing up any existing one), offers to install the NVIDIA Container Toolkit when a GPU is present but Docker can't use it yet, and launches the stack with the GPU override when the GPU is usable. `./install.sh -y` accepts every recommendation non-interactively; `--cpu` ignores the GPU. Re-run it any time to switch profiles.
+- **GPU** runs the full-power configuration: `llama3.1:8b`, 4 parallel workers, models pinned in memory. Requires the NVIDIA Container Toolkit (see below). Mapping a report takes ~30-60 s.
+- **CPU** keeps the same `llama3.1:8b` quality with halved parallelism and idle memory release (~7.5 GB footprint). Mapping takes minutes instead of seconds.
+- **Basic** swaps to the small `llama3.2:3b` model (~2 GB download, ~4 GB footprint) — noticeably worse mappings, but it runs on modest laptops.
 
-### Manual
+Both CPU profiles automatically pin inference to **all CPU threads except two** (computed at container start, whatever the core count), so the machine stays responsive while a report is being mapped.
 
-```
-docker compose up --build
-```
+Tip: to make your profile stick so plain `docker compose up` / `docker compose down` uses it, add a line to `.env`, e.g. `COMPOSE_FILE=docker-compose.yml:docker-compose.cpu.yml`.
 
-(Every setting has a working default baked into `docker-compose.yml`; create a `.env` only to override them — ports, model names, `MAP_WORKERS`/`OLLAMA_NUM_PARALLEL` parallelism.)
+(Every other setting has a working default baked into `docker-compose.yml`; create a `.env` only to override them — ports, model names, `MAP_WORKERS`/`OLLAMA_NUM_PARALLEL` parallelism. Values set in `.env` win over profile defaults.)
 
 - Frontend: http://localhost:5173
 - Backend: http://localhost:8000 (`/health`, `/api/ingest`, `/api/chat`, `/api/matrix`)
@@ -89,7 +91,7 @@ docker compose exec backend python -m app.attack.build_kb --refresh
 
 ### GPU acceleration (optional, ~10x faster mapping)
 
-`./install.sh` handles all of this automatically (detects the GPU, installs the toolkit on apt-based systems, launches with the override). Manually: with an NVIDIA GPU and the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed:
+With an NVIDIA GPU and the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed:
 
 ```
 sudo apt-get install -y nvidia-container-toolkit

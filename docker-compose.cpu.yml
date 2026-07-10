@@ -1,0 +1,31 @@
+# Standard CPU profile — for machines with MORE than 8 GB of RAM and no
+# (usable) NVIDIA GPU:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
+#
+# Keeps the full-quality llama3.1:8b chat model (mapping quality is the point
+# of the pipeline) but halves parallelism and releases models after 5 idle
+# minutes — total footprint ~7.5 GB, which fits a 16 GB machine. Expect
+# CPU-only mapping to take tens of seconds per chunk: slow but functional.
+#
+# Inference is pinned to all-but-two CPU threads, computed at container start
+# (`nproc` inside the container sees the host's CPUs, and the inference runner
+# subprocesses inherit the affinity) — so a report being mapped never
+# saturates the whole machine, whatever its core count.
+services:
+  ollama:
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-2}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        N=$$(nproc)
+        if [ "$$N" -gt 3 ]; then CPUS="0-$$((N - 3))"; else CPUS="0-$$((N - 1))"; fi
+        echo "CPU profile: pinning inference to CPUs $$CPUS ($$N total, 2 kept free)"
+        exec taskset -c "$$CPUS" /bin/ollama serve
+
+  backend:
+    environment:
+      # Keep in sync with OLLAMA_NUM_PARALLEL above (see docker-compose.yml).
+      - MAP_WORKERS=${MAP_WORKERS:-2}
