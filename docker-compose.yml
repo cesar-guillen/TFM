@@ -45,6 +45,11 @@ services:
     image: ollama/ollama:latest
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
+    # Optional core pinning for CPU-only machines: e.g. "0-5" restricts
+    # inference to cores 0-5, leaving the rest fully free so the host stays
+    # responsive during minutes-long mapping runs. Empty (the default) means
+    # no restriction. install.sh offers this on CPU-mode installs.
+    cpuset: ${OLLAMA_CPUSET:-}
     environment:
       # Execution slots for concurrent requests: the mapping stage sends
       # MAP_WORKERS chunk verdicts at once (llama.cpp batches their decode,

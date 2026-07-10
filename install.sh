@@ -231,6 +231,18 @@ if [ "$GPU_MODE" = 0 ] && [ "$MODEL" = "llama3.1:8b" ] && [ "$RAM_GB" -lt 14 ]; 
 fi
 [ "$HAS_AVX" = 0 ] && [ "$GPU_MODE" = 0 ] && warn "No AVX + no GPU: mapping will work but may take minutes per chunk."
 
+# CPU-only inference saturates every core for minutes at a time; pinning
+# Ollama to all-but-two keeps the machine usable while a report maps.
+OLLAMA_CPUSET=""
+if [ "$GPU_MODE" = 0 ] && [ "$CPUS" -ge 4 ] 2>/dev/null; then
+  USE=$((CPUS - 2))
+  say ""
+  if ask_yn "CPU inference will use all ${CPUS} cores — limit it to ${USE}, leaving 2 free so the machine stays responsive?" y; then
+    OLLAMA_CPUSET="0-$((USE - 1))"
+    ok "Ollama will be pinned to cores 0-$((USE - 1)); 2 cores stay free."
+  fi
+fi
+
 # ── 5. Write .env ────────────────────────────────────────────────────────────
 hdr "Configuration"
 
@@ -257,6 +269,9 @@ OLLAMA_NUM_PARALLEL=${PARALLEL}
 MAP_WORKERS=${WORKERS}
 OLLAMA_KEEP_ALIVE=${KEEP_ALIVE}
 EOF
+  if [ -n "$OLLAMA_CPUSET" ]; then
+    printf '\n# Pin inference to these cores, leaving the rest free for the desktop.\nOLLAMA_CPUSET=%s\n' "$OLLAMA_CPUSET" >> .env
+  fi
   ok "Wrote .env → ${BOLD}${PROFILE_LABEL}${RESET} (${PARALLEL} parallel slots, keep-alive ${KEEP_ALIVE})"
 fi
 
@@ -349,7 +364,7 @@ printf '  ├%s┤%s\n' "$BAR" "$RESET"
 row "Frontend" "http://localhost:5173"
 row "Backend API" "http://localhost:8000  (/health)"
 row "Model" "$PROFILE_LABEL"
-row "Mode" "$( [ "$GPU_MODE" = 1 ] && echo "GPU — $GPU_NAME" || echo "CPU (${CPUS} cores)" )"
+row "Mode" "$( [ "$GPU_MODE" = 1 ] && echo "GPU — $GPU_NAME" || { [ -n "$OLLAMA_CPUSET" ] && echo "CPU ($((CPUS - 2)) of ${CPUS} cores)" || echo "CPU (${CPUS} cores)"; } )"
 printf '%s  └%s┘%s\n' "$GREEN" "$BAR" "$RESET"
 say ""
 say "  ${DIM}The LLM warms up in the background after start — the first mapping may show"
