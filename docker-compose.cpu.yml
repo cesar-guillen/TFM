@@ -34,3 +34,9 @@ services:
     environment:
       # Keep in sync with OLLAMA_NUM_PARALLEL above (see docker-compose.yml).
       - MAP_WORKERS=${MAP_WORKERS:-4}
+      # Size llama.cpp threads to the pinned cores (-1 = auto) so they never
+      # oversubscribe them (a measured cliff in VMs). Prompt size stays at the
+      # full-quality defaults (MAP_CANDIDATES=8 / MAP_DESC_CHARS=250): leaner
+      # prompts measured ~22% faster but visibly changed the verdicts —
+      # revisit with the eval harness before trading accuracy for speed.
+      - MAP_NUM_THREAD=${MAP_NUM_THREAD:--1}
