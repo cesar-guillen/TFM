@@ -3,7 +3,8 @@ client the same way ingest jobs are — see app.ingest.jobs for the pattern
 rationale (plain dict + lock, fine for a single-process dev scaffold)."""
 
 import threading
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Literal
 
 Status = Literal["warming", "retrieving", "mapping", "aggregating", "done", "error", "cancelled"]
@@ -19,6 +20,11 @@ class MappingJob:
     chunks_mapped: int = 0
     layer: dict | None = None  # Navigator layer JSON; partial during "mapping", final at "done"
     error: str | None = None
+    # Run timing: started when the job is created (so warming/retrieving count
+    # too), frozen by update_job the moment the status turns terminal. The
+    # status endpoint derives elapsed_seconds from these.
+    started_at: float = field(default_factory=time.time)
+    finished_at: float | None = None
     # Cooperative cancellation: set via request_cancel(), checked by the worker
     # at safe boundaries (between stages / chunk verdicts) — an in-flight LLM
     # call is never interrupted, its result is just discarded.
@@ -48,6 +54,8 @@ def update_job(report_id: str, **fields: object) -> None:
             return
         for key, value in fields.items():
             setattr(job, key, value)
+        if job.status in TERMINAL_STATUSES and job.finished_at is None:
+            job.finished_at = time.time()
 
 
 def request_cancel(report_id: str) -> bool:

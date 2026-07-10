@@ -19,6 +19,7 @@ import { useAttackData } from "../hooks/useAttackData";
 import { useIngestJob } from "../hooks/useIngestJob";
 import { useMappingJob } from "../hooks/useMappingJob";
 import { layerToState } from "../types/attack";
+import { formatDuration } from "../utils/format";
 
 /** The main dashboard is the matrix library: upload a new report, or open,
  * edit and delete previously computed matrices. While a report is being
@@ -192,6 +193,7 @@ export default function DashboardPage() {
                   </div>
                   <span className="matrix-card__meta">
                     {entry.filename ? `From ${entry.filename}` : "Built by hand"}
+                    {entry.duration_seconds != null && ` · mapped in ${formatDuration(entry.duration_seconds)}`}
                   </span>
                   <div className="matrix-card__footer">
                     <span className="badge">{entry.technique_count} techniques</span>
@@ -300,7 +302,7 @@ export default function DashboardPage() {
         <div className="matrix-toast" role="status">
           <span className="matrix-toast__icon">✓</span>
           <div className="matrix-toast__body">
-            <strong>Matrix generated</strong>
+            <strong>Matrix generated{mappingJob ? ` in ${formatDuration(mappingJob.elapsed_seconds)}` : ""}</strong>
             <span>
               {mappingJob?.layer ? `${mappingJob.layer.techniques.length} techniques identified in ` : ""}
               {started.filename} — saved to your library. Review and edit it below.

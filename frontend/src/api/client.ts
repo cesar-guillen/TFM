@@ -53,6 +53,8 @@ export interface MappingStatus {
   chunks_mapped: number;
   layer: Layer | null;
   error: string | null;
+  /** Ticks while the job runs; frozen at the final duration once terminal. */
+  elapsed_seconds: number;
 }
 
 export async function startMapping(reportId: string): Promise<{ report_id: string; status: MappingStatusValue }> {
@@ -114,6 +116,9 @@ export interface SavedMatrixSummary {
   created_at: string;
   updated_at: string | null;
   technique_count: number;
+  /** How long the mapping run took; null for hand-saved matrices (and
+   * entries saved before this field existed). */
+  duration_seconds: number | null;
 }
 
 export interface SavedMatrix extends SavedMatrixSummary {

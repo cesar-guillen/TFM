@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from app.core.config import settings
 
-_SUMMARY_KEYS = ("id", "name", "filename", "created_at", "updated_at", "technique_count")
+_SUMMARY_KEYS = ("id", "name", "filename", "created_at", "updated_at", "technique_count", "duration_seconds")
 
 
 def _path(layer_id: str) -> str:
@@ -28,12 +28,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def save_layer(layer_id: str, name: str, filename: str | None, layer: dict) -> dict:
+def save_layer(
+    layer_id: str,
+    name: str,
+    filename: str | None,
+    layer: dict,
+    duration_seconds: float | None = None,
+) -> dict:
     """Persist a layer under `layer_id`, overwriting any previous entry for it
     (a re-run of the same report keeps its original created_at). Stamps the
     layer itself with `tfm_saved_id` so a client holding just the layer (e.g.
     via GET /api/matrix) can tell which history entry it belongs to and update
-    it instead of saving a duplicate."""
+    it instead of saving a duplicate. `duration_seconds` is how long the
+    mapping run took (None for hand-saved matrices); update_layer keeps it
+    untouched, so manual edits don't erase a run's timing."""
     existing = load_layer(layer_id)
     layer["tfm_saved_id"] = layer_id
     entry = {
@@ -43,6 +51,7 @@ def save_layer(layer_id: str, name: str, filename: str | None, layer: dict) -> d
         "created_at": existing["created_at"] if existing else _now(),
         "updated_at": _now(),
         "technique_count": len(layer.get("techniques", [])),
+        "duration_seconds": duration_seconds,
         "layer": layer,
     }
     _write(entry)

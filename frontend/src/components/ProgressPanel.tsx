@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { IngestStatus, IngestStatusValue, MappingStatus, WarmupStatus } from "../api/client";
 import { useWarmup } from "../hooks/useWarmup";
+import { formatDuration } from "../utils/format";
 
 interface ProgressPanelProps {
   job: IngestStatus | null;
@@ -102,7 +103,8 @@ function MappingSection({
             <div className="progress-step__bar-fill" style={{ width: `${pct}%` }} />
           </div>
           <span className="progress-step__meta">
-            {mappingJob.chunks_mapped} / {mappingJob.chunk_count} chunks mapped
+            {mappingJob.chunks_mapped} / {mappingJob.chunk_count} chunks mapped ·{" "}
+            {formatDuration(mappingJob.elapsed_seconds)}
           </span>
         </>
       )}

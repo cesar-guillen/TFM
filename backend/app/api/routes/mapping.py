@@ -1,4 +1,5 @@
 import os
+import time
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -80,7 +81,9 @@ def _process(report_id: str) -> None:
 
         # Save first: save_layer stamps `tfm_saved_id` into the layer dict, so
         # the published current layer tells the editor which entry to update.
-        history.save_layer(report_id, layer["name"], source_filename, layer)
+        job = get_job(report_id)
+        duration = round(time.time() - job.started_at, 1) if job else None
+        history.save_layer(report_id, layer["name"], source_filename, layer, duration_seconds=duration)
         matrix.set_current_layer(layer)
         update_job(report_id, status="done", layer=layer)
     except MappingAborted:
@@ -145,4 +148,6 @@ def mapping_status(report_id: str):
         "chunks_mapped": job.chunks_mapped,
         "layer": job.layer,  # partial while status == "mapping", final at "done"
         "error": job.error,
+        # Ticks while the job runs, frozen at the final duration once terminal.
+        "elapsed_seconds": round((job.finished_at or time.time()) - job.started_at, 1),
     }
