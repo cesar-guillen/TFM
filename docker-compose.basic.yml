@@ -11,10 +11,15 @@
 # (`nproc` inside the container sees the host's CPUs, and the inference runner
 # subprocesses inherit the affinity) — so a report being mapped never
 # saturates the whole machine, whatever its core count.
+#
+# RAM-tight (swapping during runs)? Set OLLAMA_NUM_PARALLEL=2 and
+# MAP_WORKERS=2 in .env (it overrides these defaults) — the 3b model's
+# per-slot KV-cache is small, but on an 8 GB machine every few hundred MB
+# counts, and swapping is far slower than any batching gain.
 services:
   ollama:
     environment:
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-2}
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -32,4 +37,4 @@ services:
     environment:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
       # Keep in sync with OLLAMA_NUM_PARALLEL above (see docker-compose.yml).
-      - MAP_WORKERS=${MAP_WORKERS:-2}
+      - MAP_WORKERS=${MAP_WORKERS:-4}

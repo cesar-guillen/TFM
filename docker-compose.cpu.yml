@@ -4,18 +4,23 @@
 #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
 #
 # Keeps the full-quality llama3.1:8b chat model (mapping quality is the point
-# of the pipeline) but halves parallelism and releases models after 5 idle
-# minutes — total footprint ~7.5 GB, which fits a 16 GB machine. Expect
-# CPU-only mapping to take tens of seconds per chunk: slow but functional.
+# of the pipeline) at full parallelism — llama.cpp batches the 4 concurrent
+# decodes, which is where CPU throughput comes from — and releases models
+# after 5 idle minutes. Total footprint ~8.5 GB. Expect CPU-only mapping to
+# take tens of seconds per chunk: slow but functional.
 #
 # Inference is pinned to all-but-two CPU threads, computed at container start
 # (`nproc` inside the container sees the host's CPUs, and the inference runner
 # subprocesses inherit the affinity) — so a report being mapped never
 # saturates the whole machine, whatever its core count.
+#
+# RAM-tight (swapping during runs)? Set OLLAMA_NUM_PARALLEL=2 and
+# MAP_WORKERS=2 in .env (it overrides these defaults) — each slot costs
+# ~0.5 GB of KV-cache, and swapping is far slower than any batching gain.
 services:
   ollama:
     environment:
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-2}
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -28,4 +33,4 @@ services:
   backend:
     environment:
       # Keep in sync with OLLAMA_NUM_PARALLEL above (see docker-compose.yml).
-      - MAP_WORKERS=${MAP_WORKERS:-2}
+      - MAP_WORKERS=${MAP_WORKERS:-4}

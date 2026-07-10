@@ -59,7 +59,7 @@ Pick the profile that matches your machine — one command, nothing else to conf
 | No GPU, ≤8 GB RAM | `docker compose -f docker-compose.yml -f docker-compose.basic.yml up -d --build` |
 
 - **GPU** runs the full-power configuration: `llama3.1:8b`, 4 parallel workers, models pinned in memory. Requires the NVIDIA Container Toolkit (see below). Mapping a report takes ~30-60 s.
-- **CPU** keeps the same `llama3.1:8b` quality with halved parallelism and idle memory release (~7.5 GB footprint). Mapping takes minutes instead of seconds.
+- **CPU** keeps the same `llama3.1:8b` quality and parallelism, with idle memory release (~8.5 GB footprint). Mapping takes minutes instead of seconds. (If the machine swaps during runs, set `OLLAMA_NUM_PARALLEL=2` and `MAP_WORKERS=2` in `.env`.)
 - **Basic** swaps to the small `llama3.2:3b` model (~2 GB download, ~4 GB footprint) — noticeably worse mappings, but it runs on modest laptops.
 
 Both CPU profiles automatically pin inference to **all CPU threads except two** (computed at container start, whatever the core count), so the machine stays responsive while a report is being mapped.
