@@ -15,6 +15,19 @@ class Settings(BaseSettings):
     # the ollama service's OLLAMA_NUM_PARALLEL (docker-compose.yml) — extra
     # workers beyond that just queue server-side.
     map_workers: int = 4
+    # Retrieval candidates offered to the model per chunk, and how many chars
+    # of each candidate's description survive into the prompt. Prefill (prompt
+    # reading) is ~60-70% of a chunk's cost on CPU, so the CPU compose
+    # profiles set leaner values (6 / 170) than these full-quality defaults.
+    map_candidates: int = 8
+    map_desc_chars: int = 250
+    # llama.cpp thread count passed per request: 0 = let Ollama decide
+    # (physical cores), >0 = explicit, -1 = auto: min(physical cores,
+    # cpu_count - 2) — matches the CPU profiles' taskset pinning so threads
+    # never outnumber the cores they're allowed to run on (oversubscribed
+    # spin-wait barriers are a cliff, e.g. 8 threads on a 6-CPU cpuset in a
+    # VM). On unpinned/GPU setups auto resolves to Ollama's own default.
+    map_num_thread: int = 0
     # Skip embedding/mapping of chunks from remediation-style and boilerplate
     # sections (see app.ingest.chunking.classify_heading_path). Set
     # SECTION_FILTER=false to index every chunk, e.g. for an ablation run.

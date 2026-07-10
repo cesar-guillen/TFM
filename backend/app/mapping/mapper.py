@@ -23,8 +23,10 @@ from app.core.config import settings
 from app.core.llm import CHAT_TIMEOUT, chat_json
 from app.retrieval.retrieve import TechniqueMatch, search_techniques_for_report
 
-CANDIDATES_PER_CHUNK = 8
-DESCRIPTION_TRIM_CHARS = 250  # candidate descriptions are trimmed to keep the prompt small (3B model)
+# Candidate count and description length are settings (MAP_CANDIDATES /
+# MAP_DESC_CHARS): prompt reading (prefill) dominates a chunk's cost on CPU,
+# so the CPU compose profiles run leaner values than the full-quality
+# defaults (see app.core.config).
 
 SYSTEM_PROMPT = (
     "You are a cybersecurity analyst mapping excerpts of a security report to "
@@ -103,11 +105,12 @@ def _response_schema(candidate_ids: list[str]) -> dict:
 def _trim_description(document: str) -> str:
     """KB documents are 'Name\\n\\nDescription…'; keep a word-safe prefix of the
     description part, enough to disambiguate without blowing up the prompt."""
+    limit = settings.map_desc_chars
     description = document.split("\n\n", 1)[-1].strip()
-    if len(description) <= DESCRIPTION_TRIM_CHARS:
+    if len(description) <= limit:
         return description
-    cut = description.rfind(" ", 0, DESCRIPTION_TRIM_CHARS)
-    return description[: cut if cut > 0 else DESCRIPTION_TRIM_CHARS] + "…"
+    cut = description.rfind(" ", 0, limit)
+    return description[: cut if cut > 0 else limit] + "…"
 
 
 def _candidate_block(candidates: list[TechniqueMatch], descriptions: dict[str, str]) -> str:
@@ -139,7 +142,7 @@ def map_report(
 ) -> list[ChunkMapping]:
     """Run stage 6 for one indexed report: hybrid candidates per chunk, one LLM
     verdict per chunk, validated and flattened into ChunkMappings."""
-    candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=CANDIDATES_PER_CHUNK)
+    candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=settings.map_candidates)
     if not candidates_by_chunk:
         return []
 
@@ -187,11 +190,20 @@ def map_report(
             )
         return accepted
 
-    # Submit in report order; chunks resolve concurrently (map_workers must not
-    # exceed the ollama service's OLLAMA_NUM_PARALLEL or requests just queue
-    # server-side). Progress snapshots are re-assembled in report order so the
-    # partial matrix and evidence read naturally against the document.
+    # Chunks resolve concurrently (map_workers must not exceed the ollama
+    # service's OLLAMA_NUM_PARALLEL or requests just queue server-side).
+    # Submission order is strongest-retrieval-first: the chunks most likely to
+    # carry real findings get their verdicts early, so the live matrix shows
+    # the substance of the report within the first few chunks — on CPU, where
+    # a full run takes minutes, a user can Cancel once satisfied. Progress
+    # snapshots and the final result are re-assembled in *report* order so the
+    # matrix and evidence still read naturally against the document.
     ordered = sorted(candidates_by_chunk, key=lambda cid: chunk_meta[cid]["order"])
+    by_signal = sorted(
+        candidates_by_chunk,
+        key=lambda cid: max(m.score for m in candidates_by_chunk[cid]),
+        reverse=True,
+    )
     total = len(ordered)
     if on_progress:
         on_progress(0, total, [])
@@ -199,7 +211,7 @@ def map_report(
     by_chunk: dict[str, list[ChunkMapping]] = {}
     with httpx.Client(timeout=CHAT_TIMEOUT) as client:
         with ThreadPoolExecutor(max_workers=settings.map_workers) as pool:
-            futures = {pool.submit(map_one, chunk_id, client): chunk_id for chunk_id in ordered}
+            futures = {pool.submit(map_one, chunk_id, client): chunk_id for chunk_id in by_signal}
             try:
                 for future in as_completed(futures):
                     # Also honor a cancel when every remaining chunk is already

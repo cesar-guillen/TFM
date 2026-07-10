@@ -9,6 +9,8 @@ the caller in app.mapping.mapper.
 """
 
 import json
+import os
+from functools import lru_cache
 
 import httpx
 
@@ -38,6 +40,41 @@ def warm_chat_model() -> None:
     ).raise_for_status()
 
 
+@lru_cache(maxsize=1)
+def _physical_cores() -> int:
+    """Unique (physical id, core id) pairs from /proc/cpuinfo — the count
+    Ollama itself sizes threads by. Falls back to cpu_count if unreadable."""
+    try:
+        cores: set[tuple[str, str]] = set()
+        physical_id = "0"
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("physical id"):
+                    physical_id = line.split(":", 1)[1].strip()
+                elif line.startswith("core id"):
+                    cores.add((physical_id, line.split(":", 1)[1].strip()))
+        if cores:
+            return len(cores)
+    except OSError:
+        pass
+    return os.cpu_count() or 1
+
+
+@lru_cache(maxsize=1)
+def resolve_num_thread() -> int | None:
+    """None = leave it to Ollama. See settings.map_num_thread for the modes."""
+    n = settings.map_num_thread
+    if n == 0:
+        return None
+    if n > 0:
+        return n
+    # auto: never more threads than the cores the CPU profiles' pinning allows
+    # ollama to run on (all-but-two), and never more than physical cores
+    # (hyperthreads slow decode down — measured on the 16-thread dev host).
+    allowed = max(1, (os.cpu_count() or 3) - 2)
+    return min(_physical_cores(), allowed)
+
+
 def chat_json(
     prompt: str,
     response_schema: dict,
@@ -50,12 +87,17 @@ def chat_json(
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
+    options: dict = {"temperature": 0, "num_ctx": NUM_CTX, "num_predict": NUM_PREDICT}
+    num_thread = resolve_num_thread()
+    if num_thread is not None:
+        options["num_thread"] = num_thread
+
     payload = {
         "model": settings.ollama_model,
         "messages": messages,
         "stream": False,
         "format": response_schema,
-        "options": {"temperature": 0, "num_ctx": NUM_CTX, "num_predict": NUM_PREDICT},
+        "options": options,
     }
     url = f"{settings.ollama_host}/api/chat"
     if client is not None:
