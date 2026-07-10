@@ -8,8 +8,15 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 from app.api.routes import matrix
 from app.attack.embeddings import embed_texts
 from app.core.config import settings
-from app.ingest.indexing import index_report
-from app.ingest.jobs import create_job, get_job, update_job
+from app.ingest.indexing import IndexingAborted, index_report
+from app.ingest.jobs import (
+    TERMINAL_STATUSES,
+    create_job,
+    get_job,
+    is_cancel_requested,
+    request_cancel,
+    update_job,
+)
 from app.ingest.pdf_to_markdown import pdf_to_markdown
 
 router = APIRouter()
@@ -34,6 +41,9 @@ def _process(report_id: str, filename: str, dest_path: str) -> None:
         update_job(report_id, status="parsing")
         markdown = pdf_to_markdown(dest_path)
 
+        if is_cancel_requested(report_id):
+            raise IndexingAborted()
+
         markdown_path = os.path.join(settings.upload_dir, f"{report_id}.md")
         with open(markdown_path, "w") as f:
             f.write(markdown)
@@ -43,10 +53,20 @@ def _process(report_id: str, filename: str, dest_path: str) -> None:
         def on_progress(chunks_embedded: int, chunk_count: int) -> None:
             update_job(report_id, status="embedding", chunk_count=chunk_count, chunks_embedded=chunks_embedded)
 
-        chunks, skipped = index_report(report_id, filename, markdown, on_progress=on_progress)
+        chunks, skipped = index_report(
+            report_id,
+            filename,
+            markdown,
+            on_progress=on_progress,
+            should_abort=lambda: is_cancel_requested(report_id),
+        )
         update_job(
             report_id, status="done", markdown=markdown, chunk_count=len(chunks), chunks_skipped=skipped
         )
+    except IndexingAborted:
+        # User cancelled. Nothing reached Chroma (indexing writes once, at the
+        # end); the uploaded PDF stays on disk like any other upload.
+        update_job(report_id, status="cancelled")
     except httpx.HTTPError as exc:
         update_job(
             report_id,
@@ -83,6 +103,17 @@ def ingest(file: UploadFile, background_tasks: BackgroundTasks):
     background_tasks.add_task(_process, report_id, file.filename, dest_path)
 
     return {"report_id": report_id, "filename": file.filename, "status": "parsing"}
+
+
+@router.post("/ingest/{report_id}/cancel")
+def cancel_ingest(report_id: str):
+    """Ask a running ingest to stop. Takes effect at the next safe boundary
+    (between pipeline steps / embedding batches); no-op if already finished."""
+    job = get_job(report_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown report_id")
+    cancelling = job.status not in TERMINAL_STATUSES and request_cancel(report_id)
+    return {"report_id": report_id, "status": job.status, "cancelling": bool(cancelling)}
 
 
 @router.get("/ingest/{report_id}/status")

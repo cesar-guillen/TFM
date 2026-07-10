@@ -20,7 +20,7 @@ export function useIngestJob(reportId: string | null): IngestStatus | null {
         const status = await getIngestStatus(reportId!);
         if (cancelled) return;
         setJob(status);
-        if (status.status !== "done" && status.status !== "error") {
+        if (status.status !== "done" && status.status !== "error" && status.status !== "cancelled") {
           timer = setTimeout(poll, POLL_INTERVAL_MS);
         }
       } catch {

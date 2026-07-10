@@ -2,7 +2,9 @@ import threading
 from dataclasses import dataclass
 from typing import Literal
 
-Status = Literal["parsing", "chunking", "embedding", "done", "error"]
+Status = Literal["parsing", "chunking", "embedding", "done", "error", "cancelled"]
+
+TERMINAL_STATUSES = ("done", "error", "cancelled")
 
 
 @dataclass
@@ -15,6 +17,10 @@ class IngestJob:
     chunks_skipped: int = 0  # remediation/boilerplate chunks excluded by the section filter
     markdown: str | None = None
     error: str | None = None
+    # Cooperative cancellation: set via request_cancel(), checked by the worker
+    # between pipeline steps and embedding batches. Chroma is written once,
+    # atomically, at the end of indexing — an aborted ingest stores nothing.
+    cancel_requested: bool = False
 
 
 _jobs: dict[str, IngestJob] = {}
@@ -40,3 +46,20 @@ def update_job(report_id: str, **fields: object) -> None:
             return
         for key, value in fields.items():
             setattr(job, key, value)
+
+
+def request_cancel(report_id: str) -> bool:
+    """Flag a running job for cancellation. Returns False if there's no job or
+    it already reached a terminal state (nothing to cancel)."""
+    with _lock:
+        job = _jobs.get(report_id)
+        if job is None or job.status in TERMINAL_STATUSES:
+            return False
+        job.cancel_requested = True
+        return True
+
+
+def is_cancel_requested(report_id: str) -> bool:
+    with _lock:
+        job = _jobs.get(report_id)
+        return job is not None and job.cancel_requested

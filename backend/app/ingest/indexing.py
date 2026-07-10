@@ -20,13 +20,28 @@ EMBED_BATCH_SIZE = 4
 # surface live progress for what's by far the slowest step in the ingest.
 ProgressCallback = Callable[[int, int], None]
 
+# Polled between embedding batches; True aborts the indexing (user cancelled).
+AbortCheck = Callable[[], bool]
 
-def _embed_chunks(chunks: list[Chunk], on_progress: ProgressCallback | None = None) -> list[list[float]]:
+
+class IndexingAborted(Exception):
+    """Raised when should_abort() turns true mid-indexing. Nothing has been
+    written to Chroma at that point (the upsert is a single call at the end),
+    so an aborted ingest leaves no partial chunks behind."""
+
+
+def _embed_chunks(
+    chunks: list[Chunk],
+    on_progress: ProgressCallback | None = None,
+    should_abort: AbortCheck | None = None,
+) -> list[list[float]]:
     embeddings: list[list[float]] = []
     if on_progress:
         on_progress(0, len(chunks))
     with httpx.Client(timeout=EMBED_TIMEOUT) as client:
         for i in range(0, len(chunks), EMBED_BATCH_SIZE):
+            if should_abort and should_abort():
+                raise IndexingAborted()
             batch = chunks[i : i + EMBED_BATCH_SIZE]
             embeddings.extend(embed_texts([chunk.text for chunk in batch], client))
             if on_progress:
@@ -39,6 +54,7 @@ def index_report(
     filename: str,
     markdown: str,
     on_progress: ProgressCallback | None = None,
+    should_abort: AbortCheck | None = None,
 ) -> tuple[list[Chunk], int]:
     """Chunk a report's extracted markdown and embed+store the chunks in the
     (separate from the ATT&CK KB) `report_chunks` Chroma collection, tagged
@@ -59,7 +75,7 @@ def index_report(
         return chunks, skipped
 
     collection = get_report_chunks_collection()
-    embeddings = _embed_chunks(chunks, on_progress)
+    embeddings = _embed_chunks(chunks, on_progress, should_abort)
 
     collection.upsert(
         ids=[f"{report_id}:{chunk.order}" for chunk in chunks],

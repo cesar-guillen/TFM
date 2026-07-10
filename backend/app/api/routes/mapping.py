@@ -10,8 +10,15 @@ from app.core.llm import warm_chat_model
 from app.ingest.jobs import get_job as get_ingest_job
 from app.mapping import history
 from app.mapping.aggregate import aggregate_mappings
-from app.mapping.jobs import create_job, get_job, update_job
-from app.mapping.mapper import map_report
+from app.mapping.jobs import (
+    TERMINAL_STATUSES,
+    create_job,
+    get_job,
+    is_cancel_requested,
+    request_cancel,
+    update_job,
+)
+from app.mapping.mapper import MappingAborted, map_report
 
 router = APIRouter()
 
@@ -35,6 +42,11 @@ def _process(report_id: str) -> None:
                 raise
             warmup.mark_ready(warmup.detect_device())
 
+        # The model-load above can't be interrupted mid-flight; honor a cancel
+        # that arrived while it (or job scheduling) was underway.
+        if is_cancel_requested(report_id):
+            raise MappingAborted()
+
         update_job(report_id, status="retrieving")
 
         def on_progress(chunks_mapped: int, chunk_count: int, mappings_so_far) -> None:
@@ -51,7 +63,11 @@ def _process(report_id: str) -> None:
                 layer=partial,
             )
 
-        mappings = map_report(report_id, on_progress=on_progress)
+        mappings = map_report(
+            report_id,
+            on_progress=on_progress,
+            should_abort=lambda: is_cancel_requested(report_id),
+        )
         update_job(report_id, status="aggregating")
         layer = aggregate_mappings(mappings)
 
@@ -67,6 +83,12 @@ def _process(report_id: str) -> None:
         history.save_layer(report_id, layer["name"], source_filename, layer)
         matrix.set_current_layer(layer)
         update_job(report_id, status="done", layer=layer)
+    except MappingAborted:
+        # User cancelled: drop the partial layer published during the run so a
+        # half-mapped matrix doesn't linger as "current". Nothing is saved to
+        # the library (only completed runs are).
+        matrix.clear_current_layer()
+        update_job(report_id, status="cancelled", layer=None)
     except httpx.HTTPError as exc:
         update_job(
             report_id,
@@ -90,12 +112,24 @@ def start_mapping(report_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail=f"Report is not ingested yet (status: {ingest_job.status})")
 
     existing = get_job(report_id)
-    if existing is not None and existing.status not in ("done", "error"):
+    if existing is not None and existing.status not in TERMINAL_STATUSES:
         return {"report_id": report_id, "status": existing.status}
 
     create_job(report_id)
     background_tasks.add_task(_process, report_id)
     return {"report_id": report_id, "status": "retrieving"}
+
+
+@router.post("/reports/{report_id}/map/cancel")
+def cancel_mapping(report_id: str):
+    """Ask a running mapping job to stop. Queued chunks are dropped right away;
+    at most MAP_WORKERS in-flight verdicts finish server-side and are
+    discarded. No-op if the job already finished."""
+    job = get_job(report_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No mapping job for this report_id")
+    cancelling = job.status not in TERMINAL_STATUSES and request_cancel(report_id)
+    return {"report_id": report_id, "status": job.status, "cancelling": bool(cancelling)}
 
 
 @router.get("/reports/{report_id}/map/status")

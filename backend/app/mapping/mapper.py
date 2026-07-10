@@ -43,6 +43,15 @@ SYSTEM_PROMPT = (
 # mapping to date, so the caller can publish a live partial matrix.
 ProgressCallback = Callable[[int, int, list["ChunkMapping"]], None]
 
+# Polled before each chunk's LLM call; True aborts the run (user cancelled).
+AbortCheck = Callable[[], bool]
+
+
+class MappingAborted(Exception):
+    """Raised when should_abort() turns true mid-run. Queued chunks are
+    cancelled immediately; verdicts already in flight at Ollama finish on
+    their own in abandoned threads and are discarded."""
+
 
 @dataclass
 class ChunkMapping:
@@ -123,7 +132,11 @@ def _chunk_prompt(chunk_text: str, candidates: list[TechniqueMatch], description
     )
 
 
-def map_report(report_id: str, on_progress: ProgressCallback | None = None) -> list[ChunkMapping]:
+def map_report(
+    report_id: str,
+    on_progress: ProgressCallback | None = None,
+    should_abort: AbortCheck | None = None,
+) -> list[ChunkMapping]:
     """Run stage 6 for one indexed report: hybrid candidates per chunk, one LLM
     verdict per chunk, validated and flattened into ChunkMappings."""
     candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=CANDIDATES_PER_CHUNK)
@@ -142,6 +155,10 @@ def map_report(report_id: str, on_progress: ProgressCallback | None = None) -> l
     descriptions = {i: _trim_description(d) for i, d in zip(kb["ids"], kb["documents"])}
 
     def map_one(chunk_id: str, client: httpx.Client) -> list[ChunkMapping]:
+        # Checked as each queued chunk's turn comes up, so a cancel takes
+        # effect within one verdict's latency instead of after the whole queue.
+        if should_abort and should_abort():
+            raise MappingAborted()
         candidates = candidates_by_chunk[chunk_id]
         by_id = {m.attack_id: m for m in candidates}
         result = chat_json(
@@ -185,6 +202,10 @@ def map_report(report_id: str, on_progress: ProgressCallback | None = None) -> l
             futures = {pool.submit(map_one, chunk_id, client): chunk_id for chunk_id in ordered}
             try:
                 for future in as_completed(futures):
+                    # Also honor a cancel when every remaining chunk is already
+                    # in flight (map_one's check never runs again then).
+                    if should_abort and should_abort():
+                        raise MappingAborted()
                     by_chunk[futures[future]] = future.result()
                     if on_progress:
                         snapshot = [m for cid in ordered for m in by_chunk.get(cid, [])]
