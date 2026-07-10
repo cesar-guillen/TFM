@@ -12,6 +12,11 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
       - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-nomic-embed-text}
       - MAP_WORKERS=${MAP_WORKERS:-4}
+      # Mapping prompt size / thread knobs (see app/core/config.py). Full-
+      # quality defaults here; the cpu/basic profiles run leaner values.
+      - MAP_CANDIDATES=${MAP_CANDIDATES:-8}
+      - MAP_DESC_CHARS=${MAP_DESC_CHARS:-250}
+      - MAP_NUM_THREAD=${MAP_NUM_THREAD:-0}
     volumes:
       - ./data:/data
       - ./backend/app:/app/app
