@@ -15,6 +15,7 @@ from app.ingest.jobs import (
     get_job,
     is_cancel_requested,
     request_cancel,
+    step_seconds_snapshot,
     update_job,
 )
 from app.ingest.pdf_to_markdown import pdf_to_markdown
@@ -131,4 +132,7 @@ def ingest_status(report_id: str):
         "chunks_skipped": job.chunks_skipped,
         "markdown": job.markdown if job.status == "done" else None,
         "error": job.error,
+        # Per-step durations (parsing/chunking/embedding), the running step
+        # included at its elapsed-so-far.
+        "step_seconds": step_seconds_snapshot(job),
     }

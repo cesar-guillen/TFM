@@ -17,6 +17,7 @@ from app.mapping.jobs import (
     get_job,
     is_cancel_requested,
     request_cancel,
+    step_seconds_snapshot,
     update_job,
 )
 from app.mapping.mapper import MappingAborted, map_report
@@ -150,4 +151,7 @@ def mapping_status(report_id: str):
         "error": job.error,
         # Ticks while the job runs, frozen at the final duration once terminal.
         "elapsed_seconds": round((job.finished_at or time.time()) - job.started_at, 1),
+        # Per-phase durations (warming/retrieving/mapping/aggregating), the
+        # running phase included at its elapsed-so-far.
+        "step_seconds": step_seconds_snapshot(job),
     }

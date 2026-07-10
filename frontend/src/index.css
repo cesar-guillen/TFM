@@ -1391,6 +1391,19 @@ body {
   color: var(--text-faint);
 }
 
+/* Per-step duration next to the label ("Extracting text · 12s") */
+.progress-step__time {
+  margin-left: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-step__time::before {
+  content: "· ";
+}
+
 .progress-step--active .progress-step__label,
 .progress-step--done .progress-step__label {
   color: var(--text);

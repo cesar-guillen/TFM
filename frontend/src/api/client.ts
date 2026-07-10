@@ -16,6 +16,9 @@ export interface IngestStatus {
   chunks_embedded: number;
   markdown: string | null;
   error: string | null;
+  /** Per-step durations (keyed by status name); the running step is included
+   * at its elapsed-so-far, completed steps are frozen. */
+  step_seconds: Record<string, number>;
 }
 
 export async function ingestPdf(file: File): Promise<IngestStarted> {
@@ -55,6 +58,9 @@ export interface MappingStatus {
   error: string | null;
   /** Ticks while the job runs; frozen at the final duration once terminal. */
   elapsed_seconds: number;
+  /** Per-phase durations (keyed by status name); the running phase is
+   * included at its elapsed-so-far, completed phases are frozen. */
+  step_seconds: Record<string, number>;
 }
 
 export async function startMapping(reportId: string): Promise<{ report_id: string; status: MappingStatusValue }> {

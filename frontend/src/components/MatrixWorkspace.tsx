@@ -3,6 +3,7 @@ import { createSavedMatrix, updateSavedMatrix } from "../api/client";
 import AttackMatrix from "./AttackMatrix";
 import MatrixHistoryMenu from "./MatrixHistoryMenu";
 import MatrixMenu from "./MatrixMenu";
+import MatrixOverview from "./MatrixOverview";
 import { useHeatTheme } from "../theme/heatThemes";
 import {
   layerToState,
@@ -46,6 +47,11 @@ interface MatrixWorkspaceProps {
   /** Save target that wins over the layer's own tfm_saved_id stamp (the
    * matrix page's ?saved id). */
   saveTargetId?: string | null;
+  /** Grid layout: "full" (default) is the wide, natural-size grid that
+   * scrolls horizontally; "overview" is the dashboard's fit-to-width render
+   * where all tactics are visible with no horizontal scroll (still fully
+   * editable — cells open the editor popover). */
+  variant?: "full" | "overview";
   /** Rendered before the title input — back/navigation buttons. */
   leading?: ReactNode;
   /** The user imported a layer file: the grid detached from whatever entry it
@@ -63,6 +69,7 @@ export default function MatrixWorkspace({
   catalog,
   layer,
   saveTargetId = null,
+  variant = "full",
   leading,
   onImported,
   onSavedEntry,
@@ -197,7 +204,11 @@ export default function MatrixWorkspace({
       )}
 
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        <AttackMatrix catalog={catalog} layer={state} onLayerChange={setState} sortBy={sortBy} />
+        {variant === "overview" ? (
+          <MatrixOverview catalog={catalog} layer={state} onLayerChange={setState} sortBy={sortBy} />
+        ) : (
+          <AttackMatrix catalog={catalog} layer={state} onLayerChange={setState} sortBy={sortBy} />
+        )}
       </div>
     </div>
   );

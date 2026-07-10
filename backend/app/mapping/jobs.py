@@ -25,6 +25,11 @@ class MappingJob:
     # status endpoint derives elapsed_seconds from these.
     started_at: float = field(default_factory=time.time)
     finished_at: float | None = None
+    # Per-phase timing, mirroring app.ingest.jobs: update_job accumulates a
+    # phase's duration when the status transitions away from it; the status
+    # endpoint adds the running phase's elapsed on top.
+    status_changed_at: float = field(default_factory=time.time)
+    step_seconds: dict[str, float] = field(default_factory=dict)
     # Cooperative cancellation: set via request_cancel(), checked by the worker
     # at safe boundaries (between stages / chunk verdicts) — an in-flight LLM
     # call is never interrupted, its result is just discarded.
@@ -52,10 +57,26 @@ def update_job(report_id: str, **fields: object) -> None:
         job = _jobs.get(report_id)
         if job is None:
             return
+        previous = job.status
         for key, value in fields.items():
             setattr(job, key, value)
+        if job.status != previous:
+            now = time.time()
+            job.step_seconds[previous] = job.step_seconds.get(previous, 0.0) + (now - job.status_changed_at)
+            job.status_changed_at = now
         if job.status in TERMINAL_STATUSES and job.finished_at is None:
             job.finished_at = time.time()
+
+
+def step_seconds_snapshot(job: MappingJob) -> dict[str, float]:
+    """Completed phases' durations plus the running phase's elapsed so far
+    (frozen once the job is terminal)."""
+    steps = {k: round(v, 1) for k, v in job.step_seconds.items()}
+    if job.status not in TERMINAL_STATUSES:
+        steps[job.status] = round(
+            steps.get(job.status, 0.0) + (time.time() - job.status_changed_at), 1
+        )
+    return steps
 
 
 def request_cancel(report_id: str) -> bool:

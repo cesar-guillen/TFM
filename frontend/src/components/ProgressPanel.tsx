@@ -42,6 +42,22 @@ const MAPPING_LABELS: Record<MappingStatus["status"], string> = {
   cancelled: "Run cancelled",
 };
 
+/** "Warm-up 40s · Retrieval 1s · Mapping 2m 10s" — per-phase durations from
+ * the status endpoint (the running phase ticks, completed ones are frozen). */
+function phaseTimes(stepSeconds: Record<string, number> | undefined): string {
+  const phases: [string, string][] = [
+    ["warming", "Warm-up"],
+    ["retrieving", "Retrieval"],
+    ["mapping", "Mapping"],
+    ["aggregating", "Aggregation"],
+  ];
+  if (!stepSeconds) return "";
+  return phases
+    .filter(([key]) => stepSeconds[key] !== undefined)
+    .map(([key, label]) => `${label} ${formatDuration(stepSeconds[key])}`)
+    .join(" · ");
+}
+
 function MappingSection({
   mappingJob,
   onGenerate,
@@ -82,11 +98,15 @@ function MappingSection({
         <p className="mapping-section__hint">
           The model has to be loaded before mapping can start — this happens once, then stays warm.
         </p>
+        {mappingJob.step_seconds?.warming !== undefined && (
+          <span className="progress-step__meta">Warm-up {formatDuration(mappingJob.step_seconds.warming)}</span>
+        )}
       </div>
     );
   }
 
   const pct = mappingJob.chunk_count > 0 ? Math.round((mappingJob.chunks_mapped / mappingJob.chunk_count) * 100) : 0;
+  const phases = phaseTimes(mappingJob.step_seconds);
   return (
     <div className="mapping-section">
       <div className="mapping-section__status">
@@ -103,11 +123,11 @@ function MappingSection({
             <div className="progress-step__bar-fill" style={{ width: `${pct}%` }} />
           </div>
           <span className="progress-step__meta">
-            {mappingJob.chunks_mapped} / {mappingJob.chunk_count} chunks mapped ·{" "}
-            {formatDuration(mappingJob.elapsed_seconds)}
+            {mappingJob.chunks_mapped} / {mappingJob.chunk_count} chunks mapped
           </span>
         </>
       )}
+      {phases && <span className="progress-step__meta">{phases}</span>}
     </div>
   );
 }
@@ -183,7 +203,12 @@ export default function ProgressPanel({
             >
               <span className="progress-step__dot" />
               <div className="progress-step__body">
-                <span className="progress-step__label">{step.label}</span>
+                <span className="progress-step__label">
+                  {step.label}
+                  {step.key !== "done" && job.step_seconds?.[step.key] !== undefined && (
+                    <span className="progress-step__time">{formatDuration(job.step_seconds[step.key])}</span>
+                  )}
+                </span>
                 {step.key === "embedding" && embeddingStarted && (
                   <>
                     <div className="progress-step__bar">
