@@ -19,10 +19,12 @@ from app.core.config import settings
 # One chunk + 8 trimmed candidates + instructions ≈ 1.7k tokens; Ollama's
 # default 2048 ctx would silently truncate the tail, so size it explicitly.
 NUM_CTX = 4096
-# Hard cap on generated tokens per verdict. A few mappings with short quotes
-# fit comfortably; without a cap, a small model in constrained-JSON mode can
-# ramble for minutes on a slow CPU before closing the object.
-NUM_PREDICT = 400
+# Hard cap on generated tokens per verdict. Without a cap, a small model in
+# constrained-JSON mode can ramble for minutes on a slow CPU before closing
+# the object — but the cap must leave headroom for an evidence-rich chunk:
+# a verdict cut off at the cap is unterminated JSON that fails the whole run
+# (seen in practice at 400, cut mid-string at ~char 1689 ≈ the cap).
+NUM_PREDICT = 700
 # Generation on a slow CPU takes a while per chunk; the per-request timeout has
 # to absorb worst-case model load + prompt eval + decode.
 CHAT_TIMEOUT = 600.0
