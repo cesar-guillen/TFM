@@ -11,6 +11,7 @@ import {
 } from "../api/client";
 import MatrixHistoryMenu from "../components/MatrixHistoryMenu";
 import MatrixOverview from "../components/MatrixOverview";
+import MatrixWorkspace from "../components/MatrixWorkspace";
 import ProgressBubble from "../components/ProgressBubble";
 import ProgressPanel from "../components/ProgressPanel";
 import UploadPanel from "../components/UploadPanel";
@@ -220,60 +221,80 @@ export default function DashboardPage() {
     (mappingJob !== null && mappingJob.status !== "done" && mappingJob.status !== "error") ||
     (job?.status === "done" && mappingJob === null); // mapping about to auto-start
 
+  // Run finished: the progress bubble goes away and the run view becomes the
+  // full editor, in place — review the mappings, correct them, Save (the run
+  // is already in the library; Save updates that same entry via its
+  // tfm_saved_id stamp).
+  const finished = mappingDone && Boolean(mappingJob?.layer);
+
+  function backToLibrary() {
+    setStarted(null);
+    setMappingReportId(null);
+    setShowDoneToast(false);
+  }
+
   // Active run: the matrix fills the page and progress lives in a draggable
   // floating bubble on top of it, so the user sees the pipeline actually
   // moving instead of staring at a spinner for the ~100s+ embedding takes.
-  // "All matrices" goes back to the library (which refetches, so the run
-  // that just finished is in it).
+  // Scored cells are clickable throughout the run — a read-only popover shows
+  // the technique's evidence as it lands. "All matrices" goes back to the
+  // library (which refetches, so the run that just finished is in it).
   return (
     <div className="dashboard-loaded">
-      <section className="dashboard-loaded__matrix">
-        <div className="panel-header" style={{ justifyContent: "space-between" }}>
-          <h2>ATT&amp;CK Matrix</h2>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              className="btn"
-              style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}
-              onClick={() => {
-                setStarted(null);
-                setMappingReportId(null);
-                setShowDoneToast(false);
-              }}
-            >
+      {finished && catalog ? (
+        <MatrixWorkspace
+          catalog={catalog}
+          layer={mappingJob!.layer}
+          leading={
+            <button className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }} onClick={backToLibrary}>
               ← All matrices
             </button>
-            <MatrixHistoryMenu label="History" />
-            <Link to="/matrix" className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}>
-              Open full matrix ↗
-            </Link>
-          </div>
-        </div>
-        <div className="dashboard-loaded__matrix-body">
-          {loading && (
-            <div className="empty-state">
-              <h3>Loading matrix…</h3>
-            </div>
-          )}
-          {error && (
-            <div className="empty-state">
-              <h3>Couldn&apos;t load the matrix</h3>
-              <p>{error}</p>
-            </div>
-          )}
-          {catalog && <MatrixOverview catalog={catalog} layer={displayedState} computing={computing} />}
-        </div>
-      </section>
-
-      <ProgressBubble title="Progress" subtitle={started.filename}>
-        <ProgressPanel
-          job={job}
-          mappingJob={mappingJob}
-          onGenerate={handleGenerate}
-          generateDisabled={startingMap}
-          onCancel={() => void handleCancelRun()}
-          cancelDisabled={cancelling}
+          }
         />
-      </ProgressBubble>
+      ) : (
+        <section className="dashboard-loaded__matrix">
+          <div className="panel-header" style={{ justifyContent: "space-between" }}>
+            <h2>ATT&amp;CK Matrix</h2>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                className="btn"
+                style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}
+                onClick={backToLibrary}
+              >
+                ← All matrices
+              </button>
+              <MatrixHistoryMenu label="History" />
+            </div>
+          </div>
+          <div className="dashboard-loaded__matrix-body">
+            {loading && (
+              <div className="empty-state">
+                <h3>Loading matrix…</h3>
+              </div>
+            )}
+            {error && (
+              <div className="empty-state">
+                <h3>Couldn&apos;t load the matrix</h3>
+                <p>{error}</p>
+              </div>
+            )}
+            {catalog && <MatrixOverview catalog={catalog} layer={displayedState} computing={computing} />}
+          </div>
+        </section>
+      )}
+
+      {!finished && (
+        <ProgressBubble title="Progress" subtitle={started.filename}>
+          <ProgressPanel
+            job={job}
+            mappingJob={mappingJob}
+            onGenerate={handleGenerate}
+            generateDisabled={startingMap}
+            onCancel={() => void handleCancelRun()}
+            cancelDisabled={cancelling}
+          />
+        </ProgressBubble>
+      )}
 
       {showDoneToast && (
         <div className="matrix-toast" role="status">
@@ -282,12 +303,9 @@ export default function DashboardPage() {
             <strong>Matrix generated</strong>
             <span>
               {mappingJob?.layer ? `${mappingJob.layer.techniques.length} techniques identified in ` : ""}
-              {started.filename}
+              {started.filename} — saved to your library. Review and edit it below.
             </span>
           </div>
-          <Link to="/matrix" className="btn btn-primary matrix-toast__link">
-            Open full matrix →
-          </Link>
           <button
             className="matrix-toast__dismiss"
             onClick={() => setShowDoneToast(false)}

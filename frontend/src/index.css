@@ -661,6 +661,34 @@ body {
   width: 100%;
 }
 
+/* Read-only evidence popover (non-editable renders: the dashboard run view) */
+.attack-matrix__details-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.attack-matrix__details-score a {
+  font-size: 0.72rem;
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.attack-matrix__details-score a:hover {
+  text-decoration: underline;
+}
+
+.attack-matrix__details-comment {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
 /* Export / import / theme menu */
 .matrix-menu {
   position: relative;

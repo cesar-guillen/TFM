@@ -102,16 +102,17 @@ export default function AttackMatrix({
     el.scrollTo({ left: target, behavior: "smooth" });
   }
 
-  // Close the editor popover when the grid scrolls (the anchored cell moves).
+  // Close any open popover when anything scrolls (the anchored cell moves).
+  // Capture phase because scroll events don't bubble — this catches the grid's
+  // own scroll and the overview preview's wrapper scroll alike.
   useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid || (!selected && !tacticMenu)) return;
+    if (!selected && !tacticMenu) return;
     const close = () => {
       setSelected(null);
       setTacticMenu(null);
     };
-    grid.addEventListener("scroll", close, { passive: true });
-    return () => grid.removeEventListener("scroll", close);
+    document.addEventListener("scroll", close, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", close, { capture: true });
   }, [selected, tacticMenu]);
 
   function toggleExpanded(id: string) {
@@ -123,8 +124,10 @@ export default function AttackMatrix({
     });
   }
 
-  function openEditor(id: string, el: HTMLElement) {
-    if (!onLayerChange) return;
+  // Editable: opens the score/comment editor. Read-only (dashboard run view):
+  // opens the evidence popover for cells that are in the layer.
+  function openCell(id: string, el: HTMLElement) {
+    if (!onLayerChange && !layer[id]) return;
     setSelected(id);
     setAnchorRect(el.getBoundingClientRect());
   }
@@ -262,7 +265,7 @@ export default function AttackMatrix({
                     forceExpand={Boolean(normalizedQuery) && tech.subtechniques.some((s) => matchesQuery(s, normalizedQuery))}
                     expanded={expanded.has(tech.id)}
                     onToggleExpand={() => toggleExpanded(tech.id)}
-                    onOpenEditor={openEditor}
+                    onOpenCell={openCell}
                     query={normalizedQuery}
                     sortBy={sortBy}
                   />
@@ -314,6 +317,15 @@ export default function AttackMatrix({
           onClose={() => setSelected(null)}
         />
       )}
+
+      {!editable && selectedTech && selectedEntry && anchorRect && (
+        <CellDetails
+          tech={selectedTech}
+          entry={selectedEntry}
+          anchorRect={anchorRect}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
@@ -327,7 +339,7 @@ interface TechniqueGroupProps {
   expanded: boolean;
   forceExpand: boolean;
   onToggleExpand: () => void;
-  onOpenEditor: (id: string, el: HTMLElement) => void;
+  onOpenCell: (id: string, el: HTMLElement) => void;
   query: string;
   sortBy: TechniqueSort;
 }
@@ -341,7 +353,7 @@ function TechniqueGroup({
   expanded,
   forceExpand,
   onToggleExpand,
-  onOpenEditor,
+  onOpenCell,
   query,
   sortBy,
 }: TechniqueGroupProps) {
@@ -363,7 +375,7 @@ function TechniqueGroup({
         theme={theme}
         editable={editable}
         isSelected={selected === tech.id}
-        onOpenEditor={onOpenEditor}
+        onOpenCell={onOpenCell}
         subCount={hasSubtechniques ? tech.subtechniques.length : undefined}
         expanded={hasSubtechniques ? isExpanded : undefined}
         onToggleExpand={hasSubtechniques ? onToggleExpand : undefined}
@@ -380,7 +392,7 @@ function TechniqueGroup({
               theme={theme}
               editable={editable}
               isSelected={selected === sub.id}
-              onOpenEditor={onOpenEditor}
+              onOpenCell={onOpenCell}
               sub
             />
           ))}
@@ -398,7 +410,7 @@ interface TechniqueCellProps {
   theme: HeatTheme;
   editable: boolean;
   isSelected: boolean;
-  onOpenEditor: (id: string, el: HTMLElement) => void;
+  onOpenCell: (id: string, el: HTMLElement) => void;
   sub?: boolean;
   subCount?: number;
   expanded?: boolean;
@@ -413,7 +425,7 @@ function TechniqueCell({
   theme,
   editable,
   isSelected,
-  onOpenEditor,
+  onOpenCell,
   sub,
   subCount,
   expanded,
@@ -424,7 +436,7 @@ function TechniqueCell({
     "attack-matrix__cell",
     sub && "attack-matrix__cell--sub",
     isSelected && "attack-matrix__cell--selected",
-    (editable || hasSubs) && "attack-matrix__cell--interactive",
+    (editable || hasSubs || entry) && "attack-matrix__cell--interactive",
     entry && "attack-matrix__cell--scored",
   ]
     .filter(Boolean)
@@ -435,14 +447,16 @@ function TechniqueCell({
     : undefined;
 
   // Primary click: when editable, every cell (parents included) opens the editor —
-  // expand/collapse lives on the caret button. When not editable (dashboard
-  // preview), clicking a parent expands it so sub-techniques are still viewable.
+  // expand/collapse lives on the caret button. When not editable (dashboard run
+  // view / preview), a cell that's in the layer opens the read-only evidence
+  // popover; otherwise clicking a parent expands it so sub-techniques are
+  // still viewable.
   function handleClick(e: MouseEvent<HTMLDivElement>) {
-    if (editable) onOpenEditor(id, e.currentTarget);
+    if (editable || entry) onOpenCell(id, e.currentTarget);
     else if (hasSubs) onToggleExpand!();
   }
 
-  const interactive = editable || hasSubs;
+  const interactive = editable || hasSubs || Boolean(entry);
 
   return (
     <div
@@ -457,7 +471,7 @@ function TechniqueCell({
           ? (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                if (editable) onOpenEditor(id, e.currentTarget);
+                if (editable || entry) onOpenCell(id, e.currentTarget);
                 else if (hasSubs) onToggleExpand!();
               }
             }
@@ -600,6 +614,44 @@ function CellEditor({ tech, entry, anchorRect, onScore, onComment, onRemove, onC
           Remove from matrix
         </button>
       )}
+    </AnchoredPopover>
+  );
+}
+
+/** Read-only counterpart of CellEditor for non-editable renders (the dashboard
+ * run view): shows a mapped technique's score and the evidence comments the
+ * mapper attached, so TTPs can be inspected while the run is still going. */
+function CellDetails({
+  tech,
+  entry,
+  anchorRect,
+  onClose,
+}: {
+  tech: TechniqueSummary;
+  entry: { score: number; comment?: string };
+  anchorRect: DOMRect;
+  onClose: () => void;
+}) {
+  return (
+    <AnchoredPopover anchorRect={anchorRect} width={320} onClose={onClose} className="attack-matrix__editor">
+      <div className="attack-matrix__editor-header">
+        <div>
+          <strong>{tech.id}</strong>
+          <span>{tech.name}</span>
+        </div>
+        <button className="attack-matrix__editor-close" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+      <div className="attack-matrix__details-score">
+        <span className="badge">score {entry.score}</span>
+        <a href={tech.url} target="_blank" rel="noreferrer" title={`Open ${tech.id} on attack.mitre.org`}>
+          attack.mitre.org ↗
+        </a>
+      </div>
+      <div className="attack-matrix__details-comment">
+        {entry.comment?.trim() || "No evidence comment on this technique."}
+      </div>
     </AnchoredPopover>
   );
 }
