@@ -6,7 +6,9 @@ import threading
 from dataclasses import dataclass
 from typing import Literal
 
-Status = Literal["warming", "retrieving", "mapping", "aggregating", "done", "error"]
+Status = Literal["warming", "retrieving", "mapping", "aggregating", "done", "error", "cancelled"]
+
+TERMINAL_STATUSES = ("done", "error", "cancelled")
 
 
 @dataclass
@@ -17,6 +19,10 @@ class MappingJob:
     chunks_mapped: int = 0
     layer: dict | None = None  # Navigator layer JSON; partial during "mapping", final at "done"
     error: str | None = None
+    # Cooperative cancellation: set via request_cancel(), checked by the worker
+    # at safe boundaries (between stages / chunk verdicts) — an in-flight LLM
+    # call is never interrupted, its result is just discarded.
+    cancel_requested: bool = False
 
 
 _jobs: dict[str, MappingJob] = {}
@@ -42,3 +48,20 @@ def update_job(report_id: str, **fields: object) -> None:
             return
         for key, value in fields.items():
             setattr(job, key, value)
+
+
+def request_cancel(report_id: str) -> bool:
+    """Flag a running job for cancellation. Returns False if there's no job or
+    it already reached a terminal state (nothing to cancel)."""
+    with _lock:
+        job = _jobs.get(report_id)
+        if job is None or job.status in TERMINAL_STATUSES:
+            return False
+        job.cancel_requested = True
+        return True
+
+
+def is_cancel_requested(report_id: str) -> bool:
+    with _lock:
+        job = _jobs.get(report_id)
+        return job is not None and job.cancel_requested

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  cancelIngest,
+  cancelMapping,
   deleteSavedMatrix,
   getMatrixHistory,
   startMapping,
@@ -72,6 +74,39 @@ export default function DashboardPage() {
   useEffect(() => {
     if (mappingDone) setShowDoneToast(true);
   }, [mappingDone]);
+
+  // Stop the run and free the user: request cancellation of whichever stage
+  // is active, then return to the library right away — the backend settles
+  // the job to "cancelled" at its next safe boundary on its own.
+  const [cancelling, setCancelling] = useState(false);
+  async function handleCancelRun() {
+    if (!started) return;
+    setCancelling(true);
+    try {
+      if (mappingReportId) {
+        await cancelMapping(mappingReportId);
+      } else {
+        await cancelIngest(started.report_id);
+      }
+    } catch {
+      // Job may have finished in the meantime — leaving is still correct.
+    } finally {
+      setCancelling(false);
+      setStarted(null);
+      setMappingReportId(null);
+      setShowDoneToast(false);
+    }
+  }
+
+  // If the backend reports the job cancelled from elsewhere, leave the run
+  // view too — there's nothing left to watch.
+  const runCancelled = job?.status === "cancelled" || mappingJob?.status === "cancelled";
+  useEffect(() => {
+    if (runCancelled) {
+      setStarted(null);
+      setMappingReportId(null);
+    }
+  }, [runCancelled]);
 
   // (Re)load the library whenever it's the visible view — including on return
   // from a run, which will have added its own entry.
@@ -235,6 +270,8 @@ export default function DashboardPage() {
           mappingJob={mappingJob}
           onGenerate={handleGenerate}
           generateDisabled={startingMap}
+          onCancel={() => void handleCancelRun()}
+          cancelDisabled={cancelling}
         />
       </ProgressBubble>
 

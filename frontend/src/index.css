@@ -1428,6 +1428,13 @@ body {
   width: 100%;
 }
 
+.progress-cancel {
+  margin-top: 0.9rem;
+  width: 100%;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+}
+
 /* ── LLM warm-up note (shown while the model loads in the background) ────── */
 
 .warmup-note {

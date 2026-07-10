@@ -6,7 +6,7 @@ export interface IngestStarted {
   status: "parsing";
 }
 
-export type IngestStatusValue = "parsing" | "chunking" | "embedding" | "done" | "error";
+export type IngestStatusValue = "parsing" | "chunking" | "embedding" | "done" | "error" | "cancelled";
 
 export interface IngestStatus {
   report_id: string;
@@ -37,7 +37,14 @@ export async function getIngestStatus(reportId: string): Promise<IngestStatus> {
   return res.json();
 }
 
-export type MappingStatusValue = "warming" | "retrieving" | "mapping" | "aggregating" | "done" | "error";
+export type MappingStatusValue =
+  | "warming"
+  | "retrieving"
+  | "mapping"
+  | "aggregating"
+  | "done"
+  | "error"
+  | "cancelled";
 
 export interface MappingStatus {
   report_id: string;
@@ -54,6 +61,22 @@ export async function startMapping(reportId: string): Promise<{ report_id: strin
     throw new Error(`Starting mapping failed: ${res.status} ${await res.text()}`);
   }
   return res.json();
+}
+
+/** Ask a running job to stop (no-op if it already finished). The job settles
+ * to status "cancelled" at its next safe boundary. */
+export async function cancelIngest(reportId: string): Promise<void> {
+  const res = await fetch(`/api/ingest/${reportId}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Cancelling ingest failed: ${res.status} ${await res.text()}`);
+  }
+}
+
+export async function cancelMapping(reportId: string): Promise<void> {
+  const res = await fetch(`/api/reports/${reportId}/map/cancel`, { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Cancelling mapping failed: ${res.status} ${await res.text()}`);
+  }
 }
 
 export async function getMappingStatus(reportId: string): Promise<MappingStatus> {

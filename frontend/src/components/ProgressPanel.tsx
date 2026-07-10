@@ -8,6 +8,9 @@ interface ProgressPanelProps {
   /** Retry hook for a failed run — mapping starts automatically otherwise. */
   onGenerate: () => void;
   generateDisabled?: boolean;
+  /** Stop the run (ingest or mapping, whichever is active). */
+  onCancel?: () => void;
+  cancelDisabled?: boolean;
 }
 
 /** Warm-up wording matched to the hardware actually in use — the device is
@@ -35,6 +38,7 @@ const MAPPING_LABELS: Record<MappingStatus["status"], string> = {
   aggregating: "Aggregating techniques…",
   done: "Matrix generated",
   error: "Mapping failed",
+  cancelled: "Run cancelled",
 };
 
 function MappingSection({
@@ -106,17 +110,28 @@ function MappingSection({
   );
 }
 
-export default function ProgressPanel({ job, mappingJob, onGenerate, generateDisabled }: ProgressPanelProps) {
+export default function ProgressPanel({
+  job,
+  mappingJob,
+  onGenerate,
+  generateDisabled,
+  onCancel,
+  cancelDisabled,
+}: ProgressPanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
 
   // Poll the LLM warm-up state while the pipeline is running: it drives the
   // wording of the mapping job's "warming" phase, and lets the user know
   // during ingest that the model is already loading in the background.
+  const ingestActive = job !== null && job.status !== "error" && job.status !== "cancelled";
   const pipelineRunning =
-    job !== null &&
-    job.status !== "error" &&
-    (mappingJob === null || (mappingJob.status !== "done" && mappingJob.status !== "error"));
+    ingestActive &&
+    (mappingJob === null ||
+      (mappingJob.status !== "done" && mappingJob.status !== "error" && mappingJob.status !== "cancelled"));
   const warmup = useWarmup(pipelineRunning);
+  // Cancellable while any stage is still working; pipelineRunning flips false
+  // once the mapping job reaches a terminal state.
+  const cancellable = pipelineRunning && !(job?.status === "done" && mappingJob?.status === "done");
 
   // Keep the step the pipeline is currently on in view: whenever ingest or
   // mapping advances, scroll the active element into the panel's viewport
@@ -136,6 +151,15 @@ export default function ProgressPanel({ job, mappingJob, onGenerate, generateDis
       <div className="mapping-section">
         <span className="badge badge-danger">Failed</span>
         <p className="mapping-section__hint">{job.error}</p>
+      </div>
+    );
+  }
+
+  if (job.status === "cancelled") {
+    return (
+      <div className="mapping-section">
+        <span className="badge">Cancelled</span>
+        <p className="mapping-section__hint">The run was stopped before finishing.</p>
       </div>
     );
   }
@@ -189,6 +213,16 @@ export default function ProgressPanel({ job, mappingJob, onGenerate, generateDis
             warmup={warmup}
           />
         </div>
+      )}
+      {onCancel && cancellable && (
+        <button
+          className="btn btn-danger progress-cancel"
+          onClick={onCancel}
+          disabled={cancelDisabled}
+          title="Stop this run — nothing is saved for it"
+        >
+          Cancel run
+        </button>
       )}
     </div>
   );

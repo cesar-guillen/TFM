@@ -24,7 +24,7 @@ export function useMappingJob(reportId: string | null, attempt = 0): MappingStat
         const status = await getMappingStatus(reportId!);
         if (cancelled) return;
         setJob(status);
-        if (status.status !== "done" && status.status !== "error") {
+        if (status.status !== "done" && status.status !== "error" && status.status !== "cancelled") {
           timer = setTimeout(poll, POLL_INTERVAL_MS);
         }
       } catch {
