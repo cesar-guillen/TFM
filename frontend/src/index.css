@@ -818,14 +818,19 @@ body {
    equally, so all 15 tactics fit without side-scrolling. Only the vertical
    axis scrolls (columns run their full natural height). */
 .attack-matrix--overview {
-  height: auto;
+  height: 100%;
   width: 100%;
 }
 
+/* The grid is its own vertical scroll container (columns run their natural
+   height; sticky tactic headers pin to its top), so the toolbar — shown in
+   editable renders — stays pinned above it instead of scrolling away. */
 .attack-matrix--overview .attack-matrix__grid {
-  overflow: visible;
-  flex: initial;
-  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+  padding: 0 0 1rem;
   gap: 4px;
 }
 
@@ -859,8 +864,9 @@ body {
 .matrix-overview__scroll {
   width: 100%;
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* Scrolling lives inside the grid (.attack-matrix--overview) so editable
+     renders keep their toolbar in view; this wrapper just sizes the matrix. */
+  overflow: hidden;
 }
 
 /* Floating sideways-scroll arrows for the full (non-overview) matrix page —

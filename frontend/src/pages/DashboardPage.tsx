@@ -247,7 +247,6 @@ export default function DashboardPage() {
         <MatrixWorkspace
           catalog={catalog}
           layer={mappingJob!.layer}
-          variant="overview"
           leading={
             <button className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }} onClick={backToLibrary}>
               ← All matrices

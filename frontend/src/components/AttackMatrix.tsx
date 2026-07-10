@@ -31,8 +31,10 @@ interface AttackMatrixProps {
   layer: LayerState;
   onLayerChange?: (next: LayerState) => void;
   compact?: boolean;
-  /** Static, scaled-to-fit render: no toolbar, no expand/hide interactions.
-   * The whole matrix lays out at natural size so a parent can scale it. */
+  /** Fit-to-width layout: columns share the available width equally so all
+   * tactics are visible with no horizontal scroll (this is the only layout
+   * rendered anywhere since the wide grid was retired). Layout only — the
+   * toolbar, tactic hide-menus and cell editor follow `onLayerChange`. */
   overview?: boolean;
   /** Vertical order of techniques within each tactic column. */
   sortBy?: TechniqueSort;
@@ -180,7 +182,7 @@ export default function AttackMatrix({
     <div
       className={`attack-matrix${compact ? " attack-matrix--compact" : ""}${overview ? " attack-matrix--overview" : ""}`}
     >
-      {!overview && (
+      {editable && (
       <div className="attack-matrix__toolbar">
         <input
           type="text"
@@ -238,7 +240,7 @@ export default function AttackMatrix({
 
           return (
             <div className="attack-matrix__column" key={tactic.id}>
-              {overview ? (
+              {!editable ? (
                 <div className="attack-matrix__column-header attack-matrix__column-header--static" title={tactic.name}>
                   <span>{tactic.name}</span>
                   <span className="attack-matrix__column-count">{tactic.techniques.length}</span>
