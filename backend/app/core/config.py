@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     ollama_embed_model: str = "nomic-embed-text"
     # Concurrent per-chunk LLM calls in the mapping stage. Keep in sync with
     # the ollama service's OLLAMA_NUM_PARALLEL (docker-compose.yml) — extra
-    # workers beyond that just queue server-side.
+    # workers beyond that just queue server-side. -1 = auto by machine RAM,
+    # matching the CPU profile's slot auto-sizing (see resolve_map_workers
+    # in app.core.llm and the docker-compose.cpu.yml ollama entrypoint).
     map_workers: int = 4
     # Retrieval candidates offered to the model per chunk, and how many chars
     # of each candidate's description survive into the prompt. Prefill (prompt

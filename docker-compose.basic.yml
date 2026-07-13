@@ -21,6 +21,11 @@ services:
     environment:
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
+      # Same memory trims as docker-compose.cpu.yml (see the comments there):
+      # 8-bit KV-cache and no host-RAM prompt cache.
+      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
+      - LLAMA_ARG_CACHE_RAM=${LLAMA_ARG_CACHE_RAM:-0}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

@@ -4,36 +4,62 @@
 #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
 #
 # Keeps the full-quality llama3.1:8b chat model (mapping quality is the point
-# of the pipeline) at full parallelism — llama.cpp batches the 4 concurrent
-# decodes, which is where CPU throughput comes from — and releases models
-# after 5 idle minutes. Total footprint ~8.5 GB. Expect CPU-only mapping to
-# take tens of seconds per chunk: slow but functional.
+# of the pipeline) and releases models after 5 idle minutes. llama.cpp batches
+# the concurrent decodes, which is where CPU throughput comes from. Expect
+# CPU-only mapping to take tens of seconds per chunk: slow but functional.
+#
+# Memory: the model weights are ~4.7 GB resident (Ollama runs with --no-mmap),
+# plus ~0.25 GB of KV-cache per parallel slot (4096-token context, q8_0 — see
+# below). Slot count is chosen at container start from the machine's RAM:
+# 4 slots when >= 10 GiB (footprint ~6 GB), 2 slots below that (~5.5 GB).
+# The low tier exists mainly for WSL2/Docker Desktop, which by default give
+# the Linux VM only HALF the host's RAM — a 16 GB Windows machine runs this
+# stack inside a ~7.2 GiB VM. (Raising the VM's share via .wslconfig also
+# works; see README.) Set OLLAMA_NUM_PARALLEL in .env to override the choice —
+# then keep MAP_WORKERS equal to it.
 #
 # Inference is pinned to all-but-two CPU threads, computed at container start
 # (`nproc` inside the container sees the host's CPUs, and the inference runner
 # subprocesses inherit the affinity) — so a report being mapped never
 # saturates the whole machine, whatever its core count.
-#
-# RAM-tight (swapping during runs)? Set OLLAMA_NUM_PARALLEL=2 and
-# MAP_WORKERS=2 in .env (it overrides these defaults) — each slot costs
-# ~0.5 GB of KV-cache, and swapping is far slower than any batching gain.
 services:
   ollama:
     environment:
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
+      # Empty = auto-sized from RAM in the entrypoint below.
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
+      # Quantize the KV-cache to 8-bit: halves per-slot context memory
+      # (~0.5 GB -> ~0.25 GB at 4096 ctx) for a negligible quality cost.
+      # Requires flash attention, so force it on (0.31's "auto" enables it on
+      # this CPU path anyway, but KV quantization must not silently degrade
+      # to f16 if a future default changes).
+      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-1}
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
+      # llama.cpp's llama-server enables a host-RAM prompt cache with a
+      # default limit of 8 GiB — on a RAM-tight machine it grows into the
+      # OOM killer over a long run. Ollama passes no --cache-ram flag, so
+      # the runner falls back to this env var (inherited from the server
+      # process): 0 disables the cache outright.
+      - LLAMA_ARG_CACHE_RAM=${LLAMA_ARG_CACHE_RAM:-0}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         N=$$(nproc)
         if [ "$$N" -gt 3 ]; then CPUS="0-$$((N - 3))"; else CPUS="0-$$((N - 1))"; fi
+        if [ -z "$$OLLAMA_NUM_PARALLEL" ]; then
+          MEM_GIB=$$(awk '/MemTotal/ {printf "%d", $$2 / 1048576}' /proc/meminfo)
+          if [ "$$MEM_GIB" -ge 10 ]; then OLLAMA_NUM_PARALLEL=4; else OLLAMA_NUM_PARALLEL=2; fi
+          export OLLAMA_NUM_PARALLEL
+          echo "CPU profile: $$MEM_GIB GiB RAM -> OLLAMA_NUM_PARALLEL=$$OLLAMA_NUM_PARALLEL"
+        fi
         echo "CPU profile: pinning inference to CPUs $$CPUS ($$N total, 2 kept free)"
         exec taskset -c "$$CPUS" /bin/ollama serve
 
   backend:
     environment:
-      # Keep in sync with OLLAMA_NUM_PARALLEL above (see docker-compose.yml).
-      - MAP_WORKERS=${MAP_WORKERS:-4}
+      # -1 = auto: same RAM threshold as the ollama entrypoint above, so the
+      # backend never sends more concurrent verdicts than there are slots.
+      - MAP_WORKERS=${MAP_WORKERS:--1}
       # Size llama.cpp threads to the pinned cores (-1 = auto) so they never
       # oversubscribe them (a measured cliff in VMs). Prompt size stays at the
       # full-quality defaults (MAP_CANDIDATES=8 / MAP_DESC_CHARS=250): leaner

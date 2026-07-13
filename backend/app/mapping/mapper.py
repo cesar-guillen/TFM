@@ -21,7 +21,7 @@ import httpx
 
 from app.core.chroma import get_attack_collection, get_report_chunks_collection
 from app.core.config import settings
-from app.core.llm import CHAT_TIMEOUT, chat_json
+from app.core.llm import CHAT_TIMEOUT, chat_json, resolve_map_workers
 from app.retrieval.retrieve import TechniqueMatch, search_techniques_for_report
 
 # Candidate count and description length are settings (MAP_CANDIDATES /
@@ -301,7 +301,7 @@ def map_report(
 
     by_chunk: dict[str, list[ChunkMapping]] = {}
     with httpx.Client(timeout=CHAT_TIMEOUT) as client:
-        with ThreadPoolExecutor(max_workers=settings.map_workers) as pool:
+        with ThreadPoolExecutor(max_workers=resolve_map_workers()) as pool:
             futures = {pool.submit(map_one, chunk_id, client): chunk_id for chunk_id in by_signal}
             try:
                 for future in as_completed(futures):

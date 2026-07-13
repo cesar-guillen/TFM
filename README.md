@@ -59,8 +59,17 @@ Pick the profile that matches your machine — one command, nothing else to conf
 | No GPU, ≤8 GB RAM | `docker compose -f docker-compose.yml -f docker-compose.basic.yml up -d --build` |
 
 - **GPU** runs the full-power configuration: `llama3.1:8b`, 4 parallel workers, models pinned in memory. Requires the NVIDIA Container Toolkit (see below). Mapping a report takes ~30-60 s.
-- **CPU** keeps the same `llama3.1:8b` quality and parallelism, with idle memory release (~8.5 GB footprint). Mapping takes minutes instead of seconds. (If the machine swaps during runs, set `OLLAMA_NUM_PARALLEL=2` and `MAP_WORKERS=2` in `.env`.)
+- **CPU** keeps the same `llama3.1:8b` quality, with idle memory release. Parallelism is auto-sized from RAM at startup: 4 concurrent decodes on ≥10 GiB machines (~6 GB footprint), 2 below that (~5.5 GB) — so it also fits the ~7 GiB VM that WSL2 gives a 16 GB Windows machine by default (see the WSL2 note below). Mapping takes minutes instead of seconds.
 - **Basic** swaps to the small `llama3.2:3b` model (~2 GB download, ~4 GB footprint) — noticeably worse mappings, but it runs on modest laptops.
+
+**WSL2 / Docker Desktop note**: by default WSL2 gives the Linux VM only **half the host's RAM** — a 16 GB Windows machine runs everything inside a ~7.2 GiB VM, and that VM total (not the host's 16 GB) is what the auto-sizing sees. The CPU profile fits, but with little headroom; for comfort (or to get the 4-worker tier back) give the VM more memory: create `C:\Users\<you>\.wslconfig` with
+
+```ini
+[wsl2]
+memory=12GB
+```
+
+then run `wsl --shutdown` from Windows and restart Docker.
 
 Both CPU profiles automatically pin inference to **all CPU threads except two** (computed at container start, whatever the core count), so the machine stays responsive while a report is being mapped.
 

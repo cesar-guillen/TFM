@@ -80,6 +80,29 @@ def resolve_num_thread() -> int | None:
     return min(_physical_cores(), allowed)
 
 
+@lru_cache(maxsize=1)
+def resolve_map_workers() -> int:
+    """Concurrent mapping calls: settings.map_workers, or -1 = auto by RAM.
+
+    Auto uses the same >= 10 GiB threshold as the docker-compose.cpu.yml
+    ollama entrypoint sizing OLLAMA_NUM_PARALLEL, so the backend never sends
+    more concurrent verdicts than the server has slots (extras would just
+    queue server-side). /proc/meminfo shows the whole VM/host total, the same
+    number the ollama container sees."""
+    n = settings.map_workers
+    if n > 0:
+        return n
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal"):
+                    mem_gib = int(line.split()[1]) / 1048576
+                    return 4 if mem_gib >= 10 else 2
+    except (OSError, ValueError, IndexError):
+        pass
+    return 4
+
+
 def _salvage_truncated_json(content: str) -> dict | None:
     """Best-effort parse of a response cut off at the num_predict cap.
 
