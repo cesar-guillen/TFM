@@ -148,3 +148,4 @@ docker compose -f docker-compose.yml -f docker-compose.basic.yml up -d --build
 
 # NVIDIA GPU (needs step 7 first):
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+
