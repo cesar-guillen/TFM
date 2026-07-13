@@ -680,13 +680,16 @@ body {
 }
 
 .attack-matrix__details-comment {
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.72rem;
+  line-height: 1.5;
   color: var(--text-dim);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 260px;
+  max-height: 60vh;
   overflow-y: auto;
+  /* Reaching the top/bottom of the comment must not chain-scroll the grid
+     behind the popover — a grid scroll closes the popover mid-read. */
+  overscroll-behavior: contain;
 }
 
 /* Export / import / theme menu */

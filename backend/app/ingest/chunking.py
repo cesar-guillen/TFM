@@ -31,6 +31,15 @@ GUIDANCE_RE = re.compile(
     r"|lessons learned|post-incident|action plan|action items|next steps"
     r"|best practice|hardening|how to protect|prevention|defensive measures"
     r"|protective measures|detection opportunit|hunting quer|sigma rule|yara rule"
+    # Response-phase communication/notification sections ("5.5 Communication":
+    # stakeholder notifications, breach disclosure — victim response actions,
+    # not adversary activity; observed mapping T1491.001 from a notification
+    # sentence). Bare "communication(s)"/"notification(s)" only as the whole
+    # heading so technical headings like "C2 Communications" stay content;
+    # the multi-word forms are specific enough to match anywhere.
+    r"|^communications?$|^notifications?$|communication plan|notification plan"
+    r"|stakeholder communication|crisis communication|breach notification"
+    r"|internal communication|external communication"
     # Spanish: remediación/mitigación/recomendaciones, contramedidas,
     # contención/erradicación/recuperación (IR response phases), lecciones
     # aprendidas, post-incidente, plan de acción, próximos pasos, buenas/
@@ -43,7 +52,14 @@ GUIDANCE_RE = re.compile(
     r"|buenas pr[aá]cticas|mejores pr[aá]cticas|correctiv"
     r"|endurecimiento|bastionado|prevenci|preventiv|medidas defensivas"
     r"|medidas de protecci|c[oó]mo proteger|oportunidades de detecci"
-    r"|reglas? sigma|reglas? yara",
+    r"|reglas? sigma|reglas? yara"
+    # Spanish mirrors of the communication/notification rules above:
+    # comunicación/comunicaciones, notificación(es), plan de comunicación/
+    # notificación, comunicación interna/externa/de crisis, notificación de
+    # brecha — same whole-heading restriction for the bare forms.
+    r"|^comunicaci[oó]n(es)?$|^notificaci[oó]n(es)?$"
+    r"|plan de comunicaci|plan de notificaci"
+    r"|comunicaci[oó]n (interna|externa|de crisis)|notificaci[oó]n de brecha",
     re.I,
 )
 

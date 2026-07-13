@@ -106,10 +106,14 @@ export default function AttackMatrix({
 
   // Close any open popover when anything scrolls (the anchored cell moves).
   // Capture phase because scroll events don't bubble — this catches the grid's
-  // own scroll and the overview preview's wrapper scroll alike.
+  // own scroll and the overview preview's wrapper scroll alike. Scrolls that
+  // originate *inside* the popover (the evidence comment has its own
+  // scrollbar) don't move the anchor, so they must not close it.
   useEffect(() => {
     if (!selected && !tacticMenu) return;
-    const close = () => {
+    const close = (e: Event) => {
+      const target = e.target;
+      if (target instanceof Element && target.closest(".attack-matrix__popover")) return;
       setSelected(null);
       setTacticMenu(null);
     };
@@ -635,7 +639,7 @@ function CellDetails({
   onClose: () => void;
 }) {
   return (
-    <AnchoredPopover anchorRect={anchorRect} width={320} onClose={onClose} className="attack-matrix__editor">
+    <AnchoredPopover anchorRect={anchorRect} width={400} onClose={onClose} className="attack-matrix__editor">
       <div className="attack-matrix__editor-header">
         <div>
           <strong>{tech.id}</strong>

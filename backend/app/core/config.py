@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # sections (see app.ingest.chunking.classify_heading_path). Set
     # SECTION_FILTER=false to index every chunk, e.g. for an ablation run.
     section_filter: bool = True
+    # Inject ATT&CK ids cited literally in a chunk's text (e.g. "[T1573]" in
+    # CISA advisories) into that chunk's candidate list ahead of retrieval —
+    # dense/BM25 can't surface them (KB documents carry names + descriptions,
+    # not ids). Set EXPLICIT_IDS=false to score pure retrieval in an ablation.
+    explicit_ids: bool = True
     cors_origins: list[str] = ["http://localhost:5173"]
 
     class Config:

@@ -1,16 +1,20 @@
-.venv/
+# Python
 __pycache__/
 *.pyc
-CLAUDE.md
+.venv/
+.pytest_cache/
 
-
-.claude/settings.local.json
-
+# Node / frontend
 node_modules/
 dist/
 *.tsbuildinfo
 
+# Local machine config (template lives in .env.example)
+.env
+CLAUDE.md
+.claude/settings.local.json
 
+# Runtime data (Docker volumes / pipeline outputs)
 data/uploads/*
 !data/uploads/.gitkeep
 data/layers/*

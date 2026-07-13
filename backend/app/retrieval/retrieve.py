@@ -1,7 +1,9 @@
+import re
 from dataclasses import dataclass
 
 from app.attack.embeddings import embed_text
 from app.core.chroma import get_attack_collection, get_report_chunks_collection
+from app.core.config import settings
 from app.retrieval.bm25 import bm25_search
 
 # Candidates each half contributes before fusion. Wider than any final top_k so
@@ -13,6 +15,15 @@ CANDIDATE_POOL = 30
 # 1/(60+rank), which keeps a #1 rank from steamrolling everything else.
 RRF_K = 60
 
+# ATT&CK technique ids cited literally in report text (CISA advisories cite
+# inline: "... traffic encryption features. [T1573]"). Neither retrieval half
+# can surface these — KB documents carry names + descriptions, not ids — so
+# they are injected as candidates directly (see _prepend_explicit_ids).
+ATTACK_ID_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+# Sorts above any fused RRF score (two #1 ranks ≈ 2/(60+1) ≈ 0.033), so
+# chunks with citations also lead the mapper's strongest-first submission.
+EXPLICIT_ID_SCORE = 1.0
+
 
 @dataclass
 class TechniqueMatch:
@@ -23,6 +34,20 @@ class TechniqueMatch:
     is_subtechnique: bool
     score: float  # RRF-fused rank score (higher = better); comparable across queries
     distance: float | None = None  # cosine distance from the dense half; None if only BM25 found it
+
+
+def _match_from_meta(
+    attack_id: str, meta: dict, score: float, distance: float | None
+) -> TechniqueMatch:
+    return TechniqueMatch(
+        attack_id=attack_id,
+        name=meta["name"],
+        tactics=meta["tactics"].split(",") if meta["tactics"] else [],
+        url=meta["url"],
+        is_subtechnique=meta["is_subtechnique"],
+        score=score,
+        distance=distance,
+    )
 
 
 def _fuse(
@@ -43,17 +68,32 @@ def _fuse(
 
     ranked = sorted(fused.items(), key=lambda kv: kv[1]["score"], reverse=True)[:top_k]
     return [
-        TechniqueMatch(
-            attack_id=attack_id,
-            name=entry["meta"]["name"],
-            tactics=entry["meta"]["tactics"].split(",") if entry["meta"]["tactics"] else [],
-            url=entry["meta"]["url"],
-            is_subtechnique=entry["meta"]["is_subtechnique"],
-            score=entry["score"],
-            distance=entry["distance"],
-        )
+        _match_from_meta(attack_id, entry["meta"], entry["score"], entry["distance"])
         for attack_id, entry in ranked
     ]
+
+
+def _prepend_explicit_ids(
+    text: str, fused: list[TechniqueMatch], top_k: int
+) -> list[TechniqueMatch]:
+    """Put techniques the text cites by id ahead of the retrieval candidates,
+    keeping the total at top_k so the mapper's prompt budget doesn't grow.
+    Cited ids missing from the KB (deprecated/revoked, typos) just don't come
+    back from the collection and are dropped silently."""
+    if not settings.explicit_ids:
+        return fused
+    cited = sorted({m.group(0).upper() for m in ATTACK_ID_RE.finditer(text)})
+    if not cited:
+        return fused
+    kb = get_attack_collection().get(ids=cited, include=["metadatas"])
+    explicit = [
+        _match_from_meta(attack_id, meta, EXPLICIT_ID_SCORE, None)
+        for attack_id, meta in zip(kb["ids"], kb["metadatas"])
+    ][:top_k]
+    if not explicit:
+        return fused
+    seen = {m.attack_id for m in explicit}
+    return (explicit + [m for m in fused if m.attack_id not in seen])[:top_k]
 
 
 def _dense_candidates(result: dict, i: int) -> list[tuple[str, dict, float]]:
@@ -70,7 +110,8 @@ def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
     """
     embedding = embed_text(text)
     result = get_attack_collection().query(query_embeddings=[embedding], n_results=CANDIDATE_POOL)
-    return _fuse(_dense_candidates(result, 0), bm25_search(text, CANDIDATE_POOL), top_k)
+    fused = _fuse(_dense_candidates(result, 0), bm25_search(text, CANDIDATE_POOL), top_k)
+    return _prepend_explicit_ids(text, fused, top_k)
 
 
 def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> dict[str, list[TechniqueMatch]]:
@@ -92,9 +133,13 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
         query_embeddings=chunks["embeddings"], n_results=CANDIDATE_POOL
     )
     return {
-        chunk_id: _fuse(
-            _dense_candidates(result, i),
-            bm25_search(chunks["documents"][i], CANDIDATE_POOL),
+        chunk_id: _prepend_explicit_ids(
+            chunks["documents"][i],
+            _fuse(
+                _dense_candidates(result, i),
+                bm25_search(chunks["documents"][i], CANDIDATE_POOL),
+                top_k_per_chunk,
+            ),
             top_k_per_chunk,
         )
         for i, chunk_id in enumerate(chunk_ids)

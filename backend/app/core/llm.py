@@ -9,6 +9,7 @@ the caller in app.mapping.mapper.
 """
 
 import json
+import logging
 import os
 from functools import lru_cache
 
@@ -16,14 +17,16 @@ import httpx
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 # One chunk + 8 trimmed candidates + instructions ≈ 1.7k tokens; Ollama's
 # default 2048 ctx would silently truncate the tail, so size it explicitly.
 NUM_CTX = 4096
 # Hard cap on generated tokens per verdict. Without a cap, a small model in
 # constrained-JSON mode can ramble for minutes on a slow CPU before closing
-# the object — but the cap must leave headroom for an evidence-rich chunk:
-# a verdict cut off at the cap is unterminated JSON that fails the whole run
-# (seen in practice at 400, cut mid-string at ~char 1689 ≈ the cap).
+# the object. Hitting the cap cuts the JSON mid-token (seen at 400 and again
+# at 700 with an evidence-rich chunk); chat_json salvages the complete prefix
+# instead of failing, so the cap bounds latency, not correctness.
 NUM_PREDICT = 700
 # Generation on a slow CPU takes a while per chunk; the per-request timeout has
 # to absorb worst-case model load + prompt eval + decode.
@@ -77,6 +80,49 @@ def resolve_num_thread() -> int | None:
     return min(_physical_cores(), allowed)
 
 
+def _salvage_truncated_json(content: str) -> dict | None:
+    """Best-effort parse of a response cut off at the num_predict cap.
+
+    Grammar-constrained decoding guarantees `content` is a prefix of valid
+    JSON, so the complete part is recoverable: re-parse at successively
+    earlier value boundaries (positions outside string literals, so quotes
+    and braces inside generated text can't fool the cut) with the containers
+    still open at that point closed. The truncated tail item is dropped —
+    for mapping verdicts its half quote would fail the evidence check anyway.
+    Returns None if nothing parseable remains (caller re-raises the original).
+    """
+    cuts: list[tuple[int, str]] = []  # (cut position, closing suffix)
+    stack: list[str] = []
+    in_string = escape = False
+    for i, ch in enumerate(content):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+                cuts.append((i + 1, "".join(reversed(stack))))
+        elif ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+            cuts.append((i + 1, "".join(reversed(stack))))
+        elif ch in "}]":
+            if not stack:
+                return None  # not a prefix of valid JSON after all
+            stack.pop()
+            cuts.append((i + 1, "".join(reversed(stack))))
+    for pos, suffix in reversed(cuts[-200:]):
+        try:
+            parsed = json.loads(content[:pos] + suffix)
+        except json.JSONDecodeError:
+            continue  # cut after an object key etc. — try one boundary earlier
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
 def chat_json(
     prompt: str,
     response_schema: dict,
@@ -107,4 +153,17 @@ def chat_json(
     else:
         response = httpx.post(url, timeout=CHAT_TIMEOUT, json=payload)
     response.raise_for_status()
-    return json.loads(response.json()["message"]["content"])
+    content = response.json()["message"]["content"]
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        salvaged = _salvage_truncated_json(content)
+        if salvaged is None:
+            raise
+        logger.warning(
+            "LLM response hit the %d-token cap mid-JSON (%d chars); "
+            "salvaged the complete prefix",
+            NUM_PREDICT,
+            len(content),
+        )
+        return salvaged
