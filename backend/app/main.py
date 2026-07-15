@@ -22,17 +22,21 @@ def _warm_models() -> None:
     (docker-compose.yml) they then stay resident. Errors are ignored — real
     requests surface them with proper messages. Progress is reported into
     app.core.warmup so the UI can show "GPU being set up / LLM warming up"
-    if an upload races this."""
+    if an upload races this. Ready is only marked once *both* models are
+    warm: an ingest racing this thread blocks on the embed model too (its
+    load queues behind the chat model's), and marking ready early made the
+    UI's warm-up note vanish while ingest was still stalled on that queue."""
     warmup.mark_loading()
     try:
         warm_chat_model()
-        warmup.mark_ready(warmup.detect_device())
     except Exception:
         warmup.mark_unavailable()
+        return
     try:
         embed_texts(["warmup"])
     except Exception:
         pass
+    warmup.mark_ready(warmup.detect_device())
 
 
 @asynccontextmanager

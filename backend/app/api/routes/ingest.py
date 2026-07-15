@@ -7,7 +7,9 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 
 from app.api.routes import matrix
 from app.attack.embeddings import embed_texts
+from app.core import warmup
 from app.core.config import settings
+from app.core.llm import warm_chat_model
 from app.ingest.indexing import IndexingAborted, index_report
 from app.ingest.jobs import (
     TERMINAL_STATUSES,
@@ -23,14 +25,28 @@ from app.ingest.pdf_to_markdown import pdf_to_markdown
 router = APIRouter()
 
 
-def _warm_embed_model() -> None:
+def _warm_models_for_run() -> None:
     """Fire-and-forget: make Ollama load the embedding model now, so the load
-    overlaps PDF parsing instead of stalling the first chunk's embed request.
-    Errors are ignored — if Ollama is down, the real embed step reports it."""
+    overlaps PDF parsing instead of stalling the first chunk's embed request —
+    and then the chat model, so its (minutes-long on CPU) load overlaps the
+    embedding work instead of becoming a serial "warming" wait when mapping
+    auto-starts after ingest. Under the CPU profiles' OLLAMA_KEEP_ALIVE=5m the
+    chat model is evicted between runs, so this is the common path there, not
+    an edge case. Both warms are no-ops in milliseconds when the model is
+    already resident. Errors are ignored — the real embed/mapping steps report
+    them with proper messages."""
     try:
         embed_texts(["warmup"])
     except Exception:
         pass
+    if warmup.is_chat_model_loaded():
+        return
+    warmup.mark_loading()
+    try:
+        warm_chat_model()
+        warmup.mark_ready(warmup.detect_device())
+    except Exception:
+        warmup.mark_unavailable()
 
 
 def _process(report_id: str, filename: str, dest_path: str) -> None:
@@ -38,7 +54,7 @@ def _process(report_id: str, filename: str, dest_path: str) -> None:
     and (especially) embedding are slow, so the client shouldn't block on them.
     Progress is polled via GET /ingest/{report_id}/status instead."""
     try:
-        threading.Thread(target=_warm_embed_model, daemon=True).start()
+        threading.Thread(target=_warm_models_for_run, daemon=True).start()
         update_job(report_id, status="parsing")
         markdown = pdf_to_markdown(dest_path)
 

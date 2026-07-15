@@ -5,10 +5,10 @@ const POLL_INTERVAL_MS = 2000;
 
 /** Polls the backend's LLM warm-up state while `active` (i.e. while a
  * pipeline run the user is watching could be waiting on a model load).
- * Stops on its own once the model is ready — with OLLAMA_KEEP_ALIVE=-1 it
- * can't regress within a backend's lifetime, and if it does (idle eviction
- * under a keep-alive duration), the mapping job's "warming" status makes the
- * caller pass `active` again. */
+ * Polls for as long as `active`, even after seeing "ready": under the CPU
+ * profiles' keep-alive the model is evicted between runs and re-warmed
+ * during ingest, so the state legitimately regresses to "loading" mid-run —
+ * stopping at the first "ready" left the panel blind to that. */
 export function useWarmup(active: boolean): WarmupStatus | null {
   const [state, setState] = useState<WarmupStatus | null>(null);
 
@@ -23,7 +23,6 @@ export function useWarmup(active: boolean): WarmupStatus | null {
         const status = await getWarmupStatus();
         if (cancelled) return;
         setState(status);
-        if (status.status === "ready") return;
       } catch {
         // Backend briefly unreachable — keep trying while active.
       }

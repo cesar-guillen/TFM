@@ -1433,6 +1433,31 @@ body {
   transition: width 0.3s ease;
 }
 
+/* 0-of-N states that are actually working (first verdicts decoding, first
+   embed batch waiting on a model load): a sweeping segment instead of a
+   frozen 0% bar, so the run reads as alive. */
+.progress-step__bar--indeterminate .progress-step__bar-fill {
+  width: 35%;
+  animation: progress-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes progress-sweep {
+  from {
+    margin-left: -35%;
+  }
+  to {
+    margin-left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-step__bar--indeterminate .progress-step__bar-fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.35;
+  }
+}
+
 .progress-step__meta {
   display: block;
   margin-top: 0.35rem;

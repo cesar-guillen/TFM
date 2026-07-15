@@ -106,6 +106,11 @@ function MappingSection({
   }
 
   const pct = mappingJob.chunk_count > 0 ? Math.round((mappingJob.chunks_mapped / mappingJob.chunk_count) * 100) : 0;
+  // Several chunks are in flight at once and the counter only moves when a
+  // whole verdict lands, so mapping legitimately sits at 0/N for the first
+  // verdict's full latency (minutes on CPU). Show a moving bar and say so,
+  // instead of a frozen 0% bar that reads as a hang.
+  const indeterminate = mappingJob.status === "mapping" && mappingJob.chunks_mapped === 0;
   const phases = phaseTimes(mappingJob.step_seconds);
   return (
     <div className="mapping-section">
@@ -119,12 +124,18 @@ function MappingSection({
       </div>
       {(mappingJob.status === "mapping" || mappingJob.status === "aggregating") && (
         <>
-          <div className="progress-step__bar">
-            <div className="progress-step__bar-fill" style={{ width: `${pct}%` }} />
+          <div className={`progress-step__bar${indeterminate ? " progress-step__bar--indeterminate" : ""}`}>
+            <div className="progress-step__bar-fill" style={indeterminate ? undefined : { width: `${pct}%` }} />
           </div>
           <span className="progress-step__meta">
             {mappingJob.chunks_mapped} / {mappingJob.chunk_count} chunks mapped
           </span>
+          {indeterminate && (
+            <p className="mapping-section__hint">
+              The first verdicts are being decoded — several chunks run in parallel, so the counter starts
+              moving in bursts once they land.
+            </p>
+          )}
         </>
       )}
       {phases && <span className="progress-step__meta">{phases}</span>}
@@ -189,6 +200,10 @@ export default function ProgressPanel({
   const currentIndex = STEP_ORDER.indexOf(job.status);
   const embeddingStarted = job.chunk_count > 0 || job.status === "embedding";
   const embeddingPct = job.chunk_count > 0 ? Math.round((job.chunks_embedded / job.chunk_count) * 100) : 0;
+  // The first embed batch blocks while Ollama loads the embed model (which on
+  // a cold boot also queues behind the chat model's multi-GB load) — keep the
+  // bar visibly alive instead of frozen at 0%.
+  const embeddingIndeterminate = job.status === "embedding" && job.chunks_embedded === 0;
 
   return (
     <div ref={bodyRef}>
@@ -211,8 +226,13 @@ export default function ProgressPanel({
                 </span>
                 {step.key === "embedding" && embeddingStarted && (
                   <>
-                    <div className="progress-step__bar">
-                      <div className="progress-step__bar-fill" style={{ width: `${embeddingPct}%` }} />
+                    <div
+                      className={`progress-step__bar${embeddingIndeterminate ? " progress-step__bar--indeterminate" : ""}`}
+                    >
+                      <div
+                        className="progress-step__bar-fill"
+                        style={embeddingIndeterminate ? undefined : { width: `${embeddingPct}%` }}
+                      />
                     </div>
                     <span className="progress-step__meta">
                       {job.chunks_embedded} / {job.chunk_count} chunks

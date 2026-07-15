@@ -83,6 +83,12 @@ Tip: to make your profile stick so plain `docker compose up` / `docker compose d
 
 That's the only command needed. On first boot the `ollama-init` service pulls the two Ollama models (names configurable in `.env`; the chat model is a ~4.7 GB download, so the backend waits a few minutes before starting), and the backend restores the pre-embedded ATT&CK knowledge base into Chroma on startup. Both steps are near-instant no-ops on every boot after that.
 
+> **First start looks stuck?** It isn't — it's the model download. With `up -d` the only visible sign is the backend sitting in "Waiting". Watch the download live (progress heartbeat every 20 s) with:
+>
+> ```
+> docker compose logs -f ollama-init
+> ```
+
 Uploaded reports persist under `./data/uploads/`; the vector store persists under `./data/chroma/`; Ollama models persist in the `ollama_models` volume.
 
 To rebuild the ATT&CK knowledge base from a newer MITRE release (re-embeds via Ollama and rewrites the bundled seed — see CLAUDE.md):
