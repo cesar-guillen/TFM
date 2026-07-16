@@ -39,17 +39,20 @@ SYSTEM_PROMPT = (
     "describes defenders or the victim organization detecting, investigating, "
     "responding, or advising (recommendations, mitigations, hardening, "
     "response actions). Do not map techniques that are merely plausible or "
-    "thematically related. If the excerpt explicitly cites an ATT&CK "
+    "thematically related. Consider each candidate independently: an excerpt "
+    "often evidences several distinct techniques at once, so map every "
+    "candidate the excerpt genuinely supports, not only the most prominent "
+    "one — a lateral-movement sentence naming a protocol and a credential "
+    "technique in the same breath evidences both. When the excerpt names the "
+    "specific mechanism a sub-technique describes (a named protocol like SSH "
+    "or RDP, a named file like /etc/shadow, a named tool or method), map that "
+    "precise sub-technique, not just its general parent. If the excerpt "
+    "explicitly cites an ATT&CK "
     "technique id (e.g. \"[T1573]\") next to described adversary activity, "
     "that citation is concrete evidence for the matching candidate, even "
-    "when the mention is brief. Confidence reflects how directly the excerpt "
-    "shows the activity: high = explicitly described; medium = strongly "
-    "implied by specific details; low = a weak but real indication. If the "
-    "excerpt does not actually indicate the activity, return no mapping for "
-    "that technique — never use low confidence as a hedge for missing "
-    "evidence. If the excerpt is boilerplate (title page, table of contents, "
-    "methodology, disclaimers) or describes only the victim's response "
-    "process, map nothing."
+    "when the mention is brief. Give each mapping a confidence score from 0 to "
+    "100 reflecting how directly the excerpt shows the activity — higher when "
+    "it is explicitly described, lower when only weakly but genuinely indicated"
 )
 
 # Called as (chunks_mapped, chunk_count, mappings_so_far) after each chunk
@@ -90,7 +93,7 @@ class ChunkMapping:
     heading_path: str
     technique_id: str
     technique_name: str
-    confidence: str  # "high" | "medium" | "low"
+    confidence: int  # 0-100, the model's own confidence; used directly as the cell score
     evidence: str
     reason: str = ""  # the model's one-sentence justification for the mapping
 
@@ -156,7 +159,26 @@ def _evidence_in_chunk(evidence: str, chunk: str) -> bool:
             pos += 1 + hit
         else:
             return True
+    # Third tier: a short quote whose distinctive words (>=4 chars) all appear
+    # somewhere in the chunk. Handles the 8b model canonicalizing a described
+    # artifact to its standard name — it maps T1003.008 correctly but quotes
+    # "/etc/shadow" for a chunk that says "shadow password file" (distinctive
+    # token "shadow" is present; "etc" is format noise). Kept narrow — <=3
+    # quote tokens — so a long fabricated quote can't slip past on a couple of
+    # shared common words; technique_id is already enum-constrained to this
+    # chunk's retrieval candidates, which bounds the blast radius further.
+    distinctive = [q for q in quote if len(q) >= 4]
+    if distinctive and len(quote) <= 3 and all(
+        any(_tokens_match(t, q) for t in text) for q in distinctive
+    ):
+        return True
     return False
+
+
+# Confidence to assume when a salvaged/truncated verdict lands without a usable
+# score. Low-ish: a mapping we couldn't read the model's confidence for should
+# not outrank one we could.
+SALVAGED_CONFIDENCE = 30
 
 
 def _response_schema(candidate_ids: list[str]) -> dict:
@@ -175,7 +197,7 @@ def _response_schema(candidate_ids: list[str]) -> dict:
                     "type": "object",
                     "properties": {
                         "technique_id": {"type": "string", "enum": candidate_ids},
-                        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
                         "reason": {"type": "string", "maxLength": 300},
                         "evidence": {"type": "string", "maxLength": 240},
                     },
@@ -266,8 +288,9 @@ def map_report(
             if NO_EVIDENCE_RE.search(m.get("reason") or ""):
                 continue  # the model itself concedes the evidence isn't there
             confidence = m.get("confidence")
-            if confidence not in ("high", "medium", "low"):
-                confidence = "low"  # salvaged partial verdicts may carry a cut enum
+            if not isinstance(confidence, (int, float)):
+                confidence = SALVAGED_CONFIDENCE  # salvaged/truncated verdicts may lack it
+            confidence = max(0, min(100, int(confidence)))
             accepted.append(
                 ChunkMapping(
                     chunk_id=chunk_id,

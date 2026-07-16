@@ -2,30 +2,27 @@
 layer. A technique mapped by several chunks keeps its *highest* confidence as
 the score (evidence strength, not evidence volume — three weak mentions don't
 make a strong one) and every chunk's evidence line in the comment, so the
-matrix cell itself carries the full traceability chain."""
+matrix cell itself carries the full traceability chain. The score is the
+model's own 0-100 confidence (see mapper.ChunkMapping); 0 is reserved for
+"not mapped"."""
 
 from collections import defaultdict
 
 from app.mapping.mapper import ChunkMapping
 
-# Confidence -> Navigator score. Spread wide so the heat ramp visibly separates
-# the tiers; 0 is reserved for "not mapped".
-CONFIDENCE_SCORES = {"high": 90, "medium": 60, "low": 30}
-
 # Score for a parent technique that wasn't mapped itself but has a mapped
 # sub-technique: the matrix collapses sub-techniques by default, so without
-# highlighting the parent the user could miss the flagged sub entirely.
-# Between "low" and "medium" — visible, but not outranking direct evidence.
+# highlighting the parent the user could miss the flagged sub entirely. A
+# neutral mid-scale value — visible, but not outranking direct high-confidence
+# evidence.
 PARENT_OF_MAPPED_SUB_SCORE = 50
 
 
 def _evidence_line(m: ChunkMapping) -> str:
     """Justification first ("why flagged"), then the verbatim quote that
-    grounds it (see mapper._evidence_in_chunk)."""
-    line = f"[{m.confidence}]"
-    if m.reason:
-        line += f" {m.reason}"
-    return f'{line} — "{m.evidence}"'
+    grounds it (see mapper._evidence_in_chunk). The score is carried by the
+    cell, not repeated here."""
+    return f'{m.reason} — "{m.evidence}"' if m.reason else f'"{m.evidence}"'
 
 
 def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19") -> dict:
@@ -37,7 +34,7 @@ def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19")
 
     techniques = []
     for technique_id, hits in sorted(by_technique.items()):
-        best = max(CONFIDENCE_SCORES.get(h.confidence, 0) for h in hits)
+        best = max(h.confidence for h in hits)
         comment = "\n".join(_evidence_line(h) for h in hits)
         techniques.append(
             {
