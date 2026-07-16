@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     attack_stix_dir: str = "/data/attack"
     attack_collection: str = "attack_techniques"
     report_chunks_collection: str = "report_chunks"
+    report_windows_collection: str = "report_windows"
     ollama_host: str = "http://ollama:11434"
     ollama_model: str = "llama3.2:3b"
     ollama_embed_model: str = "nomic-embed-text"
@@ -39,6 +40,14 @@ class Settings(BaseSettings):
     # dense/BM25 can't surface them (KB documents carry names + descriptions,
     # not ids). Set EXPLICIT_IDS=false to score pure retrieval in an ablation.
     explicit_ids: bool = True
+    # Sub-chunk retrieval halves: sentence-window dense queries (embedded at
+    # ingest into report_windows) and per-sentence rank-pooled BM25, fused
+    # alongside the chunk-level dense half. Recovers techniques evidenced by a
+    # single sentence inside a chunk about something else. Set
+    # SENTENCE_RETRIEVAL=false for a chunk-granularity-only ablation run
+    # (windows are still embedded at ingest, so the flag flips without
+    # re-ingesting).
+    sentence_retrieval: bool = True
     cors_origins: list[str] = ["http://localhost:5173"]
 
     class Config:

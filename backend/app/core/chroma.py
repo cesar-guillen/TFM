@@ -43,3 +43,13 @@ def get_report_chunks_collection() -> chromadb.Collection:
     return get_chroma_client().get_or_create_collection(
         settings.report_chunks_collection, metadata=COSINE_SPACE
     )
+
+
+def get_report_windows_collection() -> chromadb.Collection:
+    """Sentence windows of ingested report chunks (see app.ingest.sentences),
+    embedded at index time for the sub-chunk dense retrieval half. Like
+    report_chunks, never vector-queried — embeddings are query vectors against
+    the KB, grouped back to their chunk via the `chunk_order` metadata."""
+    return get_chroma_client().get_or_create_collection(
+        settings.report_windows_collection, metadata=COSINE_SPACE
+    )

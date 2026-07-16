@@ -136,19 +136,30 @@ def _split_blocks(markdown: str) -> list[tuple[str, int, int]]:
     return blocks
 
 
+# Positions a hard slice may cut at, best first: end of a line (table row /
+# list item stays whole), end of a sentence, any whitespace. A boundary only
+# counts if it keeps the piece at least half the target size — a slice forced
+# down to a stub would just multiply chunk count.
+_SLICE_BOUNDARY_RES = (re.compile(r"\n"), re.compile(r"[.!?][\"')]?\s"), re.compile(r"\s"))
+
+
 def _hard_slice(text: str, base_start: int, target_chars: int) -> list[tuple[str, int, int]]:
     """Last-resort split for a single block that alone exceeds MAX_CHARS (e.g. a
-    huge table or wall of text with no blank lines). Breaks at the nearest
-    preceding whitespace instead of mid-word; offsets stay exact."""
+    huge table or wall of text with no blank lines). Prefers to break at a line
+    end, then a sentence end, then any whitespace — so rows and sentences stay
+    whole whenever the block allows it; offsets stay exact."""
     pieces = []
     n = len(text)
     pos = 0
     while pos < n:
         end = min(pos + target_chars, n)
         if end < n:
-            ws = text.rfind(" ", pos, end)
-            if ws > pos:
-                end = ws
+            floor = pos + target_chars // 2
+            for boundary_re in _SLICE_BOUNDARY_RES:
+                cuts = [m.end() for m in boundary_re.finditer(text, floor, end)]
+                if cuts:
+                    end = cuts[-1]
+                    break
         piece = text[pos:end].strip()
         if piece:
             pieces.append((piece, base_start + pos, base_start + end))
