@@ -2,15 +2,18 @@
 
     docker compose exec backend python -m app.eval.run_eval [options]
 
-Ingests the reference PDF (or reuses an already-indexed report), scores
-retrieval coverage once, runs mapping N times, and prints a per-technique
-report. Nothing is written to the matrix library — map_report is called
-directly, so eval runs don't pollute /data/layers.
+Ingests the selected reference PDF (or reuses an already-indexed report),
+scores retrieval coverage once, runs mapping N times, and prints a
+per-technique report. Nothing is written to the matrix library — map_report is
+called directly, so eval runs don't pollute /data/layers.
 
 Options:
-  --pdf PATH        report to evaluate (default: the bundled Meridian Grove
-                    sample under data/uploads matching *sample_report._2.pdf)
+  --report NAME     labelled report to evaluate (see ground_truth.REPORTS;
+                    default: meridian-grove)
+  --pdf PATH        override the PDF path (default: the report's pdf_glob
+                    under data/uploads)
   --report-id ID    skip ingest and score an already-indexed report instead
+                    (must be the same document as --report's ground truth)
   --runs N          mapping passes to average over (default 5)
   --top-k K         candidates per chunk (default: settings.map_candidates)
 """
@@ -21,16 +24,14 @@ import os
 import uuid
 
 from app.core.config import settings
-from app.eval.ground_truth import ACCEPTABLE, CORE
+from app.eval.ground_truth import DEFAULT_REPORT, REPORTS
 from app.eval.harness import run_eval
 from app.ingest.indexing import index_report
 from app.ingest.pdf_to_markdown import pdf_to_markdown
 
-DEFAULT_GLOB = "/data/uploads/*sample_report._2.pdf"
 
-
-def _find_default_pdf() -> str | None:
-    hits = sorted(glob.glob(DEFAULT_GLOB), key=len)  # shortest name = least-prefixed copy
+def _find_pdf(pdf_glob: str) -> str | None:
+    hits = sorted(glob.glob(pdf_glob), key=len)  # shortest name = least-prefixed copy
     return hits[0] if hits else None
 
 
@@ -55,43 +56,51 @@ def _fmt_pct(values: list[int], denom: int) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Mapping eval harness")
+    parser.add_argument("--report", choices=sorted(REPORTS), default=DEFAULT_REPORT)
     parser.add_argument("--pdf")
     parser.add_argument("--report-id")
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--top-k", type=int, default=settings.map_candidates)
     args = parser.parse_args()
 
+    gt = REPORTS[args.report]
+    core, acceptable = gt.core, gt.acceptable
+
     if args.report_id:
         report_id, chunk_count = args.report_id, 0
         print(f"Scoring already-indexed report {report_id}")
     else:
-        pdf = args.pdf or _find_default_pdf()
+        pdf = args.pdf or _find_pdf(gt.pdf_glob)
         if not pdf or not os.path.exists(pdf):
-            raise SystemExit(f"No PDF found (looked for {DEFAULT_GLOB}); pass --pdf")
+            raise SystemExit(f"No PDF found (looked for {gt.pdf_glob}); pass --pdf")
         print(f"Ingesting {os.path.basename(pdf)} …")
         report_id, chunk_count = _ingest(pdf)
         print(f"  indexed {chunk_count} content chunks (report_id {report_id})")
 
     print(
+        f"Report: {gt.name}\n"
         f"Config: model={settings.ollama_model}  top_k={args.top_k}  "
         f"sentence_retrieval={settings.sentence_retrieval}  runs={args.runs}\n"
-        f"Ground truth: {len(CORE)} core + {len(ACCEPTABLE)} acceptable techniques\n"
+        f"Ground truth: {len(core)} core + {len(acceptable)} acceptable techniques\n"
     )
 
-    res = run_eval(report_id, runs=args.runs, top_k=args.top_k, chunk_count=chunk_count)
+    res = run_eval(
+        report_id, runs=args.runs, top_k=args.top_k,
+        core=core, acceptable=acceptable, chunk_count=chunk_count,
+    )
 
     print("=" * 72)
     print("RETRIEVAL COVERAGE (deterministic — the ceiling on what can be mapped)")
     print("=" * 72)
     reachable = len(res.family_reachable)
     exact_hits = len(res.retrieval_rank)
-    print(f"core reachable (exact/parent/sub is a candidate): {reachable}/{len(CORE)} "
-          f"({100 * reachable / len(CORE):.0f}%)")
-    print(f"  of which the exact id is a candidate           : {exact_hits}/{len(CORE)}")
+    print(f"core reachable (exact/parent/sub is a candidate): {reachable}/{len(core)} "
+          f"({100 * reachable / len(core):.0f}%)")
+    print(f"  of which the exact id is a candidate           : {exact_hits}/{len(core)}")
     if res.unreachable:
         print("NOT REACHABLE at all (cannot be mapped — retrieval-stage gap):")
         for t in res.unreachable:
-            print(f"    {t:<11} {CORE[t]}")
+            print(f"    {t:<11} {core[t]}")
 
     print()
     print("=" * 72)
@@ -99,7 +108,7 @@ def main() -> None:
     print("=" * 72)
     print("  (exact = this id mapped; family = exact/parent/sub via promotion)\n")
     # order: hardest first (lowest exact frequency), then by id
-    for t in sorted(CORE, key=lambda t: (res.exact_freq[t], t)):
+    for t in sorted(core, key=lambda t: (res.exact_freq[t], t)):
         ex, fam = res.exact_freq[t], res.family_freq[t]
         rank = res.retrieval_rank.get(t)
         if rank:
@@ -119,9 +128,9 @@ def main() -> None:
     print("=" * 72)
     print("SUMMARY")
     print("=" * 72)
-    print(f"  retrieval ceiling : {len(res.family_reachable)}/{len(CORE)} core techniques reachable")
-    print(f"  exact  recall     : {_fmt_pct(res.exact_per_run, len(CORE))}")
-    print(f"  family recall     : {_fmt_pct(res.family_per_run, len(CORE))}")
+    print(f"  retrieval ceiling : {len(res.family_reachable)}/{len(core)} core techniques reachable")
+    print(f"  exact  recall     : {_fmt_pct(res.exact_per_run, len(core))}")
+    print(f"  family recall     : {_fmt_pct(res.family_per_run, len(core))}")
     if res.unexpected_per_run:
         avg_unexp = sum(res.unexpected_per_run) / len(res.unexpected_per_run)
         print(f"  unexpected/run    : {avg_unexp:.1f} avg  "

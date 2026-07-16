@@ -66,7 +66,9 @@ def _match_from_meta(
 Half = list[tuple[str, dict, float | None]]
 
 
-def _fuse(halves: list[Half], top_k: int) -> list[TechniqueMatch]:
+def _fuse(
+    halves: list[Half], top_k: int, window_seats: dict[str, int] | None = None
+) -> list[TechniqueMatch]:
     """Reciprocal Rank Fusion across any number of halves. Rank-based rather
     than score-based on purpose: cosine distances and BM25 scores live on
     incomparable scales, and RRF sidesteps normalizing them.
@@ -77,6 +79,19 @@ def _fuse(halves: list[Half], top_k: int) -> list[TechniqueMatch]:
       T1566.001, BM25 #2 for its chunk, a coin-flip seat);
     - RESERVE_PER_HALF seats per half, so a candidate one half is confident
       about survives the cut even when the other halves don't corroborate.
+
+    `window_seats` (id -> best per-window rank, from _pooled_window_candidates)
+    are seated with *absolute priority*, ahead of fused ordering — a quota, not
+    a reservation. A minority sentence's #1 has a fused score of one lonely
+    half-contribution, so any selection by fused score re-buries it under
+    multi-half consensus (measured: with seats merely added to the reserved
+    set, T1059.001 — window #1 for its sentence — still lost its seat to the
+    chunk's phishing consensus cluster). Deduped across windows the quota is
+    small in practice (windows about the same topic share a #1), and it is
+    capped at half of top_k — table chunks give every row its own window, and
+    an uncapped quota there filled all the seats and evicted strong fused
+    candidates (measured costing T1053.005 its cand#4 seat in the timeline
+    chunk). Over the cap, seats go by per-window rank tier, then fused score.
     """
     fused: dict[str, dict] = {}
     for results in halves:
@@ -87,13 +102,18 @@ def _fuse(halves: list[Half], top_k: int) -> list[TechniqueMatch]:
                 entry["distance"] = distance
 
     ranking = sorted(fused, key=lambda a: (-fused[a]["score"], a))
+    seated = sorted(
+        (a for a in (window_seats or {}) if a in fused),
+        key=lambda a: (window_seats[a], -fused[a]["score"], a),
+    )[: top_k // 2]
+    selected = list(seated)
     reserved = {a for results in halves for a, _, _ in results[:RESERVE_PER_HALF]}
-    selected = [a for a in ranking if a in reserved][:top_k]
-    for attack_id in ranking:
-        if len(selected) >= top_k:
-            break
-        if attack_id not in reserved:
-            selected.append(attack_id)
+    for pool in (reserved, None):
+        for attack_id in ranking:
+            if len(selected) >= top_k:
+                break
+            if attack_id not in selected and (pool is None or attack_id in pool):
+                selected.append(attack_id)
     selected.sort(key=lambda a: (-fused[a]["score"], a))
     return [
         _match_from_meta(a, fused[a]["meta"], fused[a]["score"], fused[a]["distance"])
@@ -130,7 +150,7 @@ def _dense_candidates(result: dict, i: int) -> Half:
     return list(zip(result["ids"][i], result["metadatas"][i], result["distances"][i]))
 
 
-def _pooled_window_candidates(result: dict, indices: list[int]) -> Half:
+def _pooled_window_candidates(result: dict, indices: list[int]) -> tuple[Half, dict[str, int]]:
     """Merge several window queries of one chunk into a single half, pooled by
     *per-window rank* (best rank wins; ties broken by vote count, then id).
     This is what gives a minority sentence's technique its own undiluted dense
@@ -138,13 +158,25 @@ def _pooled_window_candidates(result: dict, indices: list[int]) -> Half:
     distances, because distances aren't comparable across windows: a window
     whose #1 hit sits at 0.31 (T1021.001 for the SSH/RDP/WinRM sentence) is a
     stronger signal than another window's #6 at 0.28 — distance-pooling let
-    the Kerberos windows' tight cluster re-bury the minority window's find."""
+    the Kerberos windows' tight cluster re-bury the minority window's find.
+
+    Also returns the seat quota for _fuse: each window's top
+    `settings.window_seat_depth` ids mapped to their best per-window rank.
+    Pooling alone undoes the minority-sentence rescue at the last step — every
+    window's #1 ties at pooled rank 1, so a minority window's find sorts
+    behind the majority cluster's tie-break votes, misses the pooled half's
+    RESERVE_PER_HALF prefix, and RRF buries it uncorroborated (measured:
+    T1059.001 ranked #1 for its PowerShell window yet never surfaced as a
+    candidate)."""
     best_rank: dict[str, int] = {}
     votes: dict[str, int] = {}
     best_dist: dict[str, float] = {}
     metas: dict[str, dict] = {}
+    seats: dict[str, int] = {}
     for i in indices:
         for rank, (attack_id, meta, distance) in enumerate(_dense_candidates(result, i), start=1):
+            if rank <= settings.window_seat_depth:
+                seats[attack_id] = min(rank, seats.get(attack_id, rank))
             if attack_id not in best_rank or rank < best_rank[attack_id]:
                 best_rank[attack_id] = rank
             votes[attack_id] = votes.get(attack_id, 0) + 1
@@ -152,7 +184,7 @@ def _pooled_window_candidates(result: dict, indices: list[int]) -> Half:
                 best_dist[attack_id] = distance
             metas[attack_id] = meta
     ranked = sorted(best_rank, key=lambda a: (best_rank[a], -votes[a], a))[:CANDIDATE_POOL]
-    return [(a, metas[a], best_dist[a]) for a in ranked]
+    return [(a, metas[a], best_dist[a]) for a in ranked], seats
 
 
 def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
@@ -163,6 +195,7 @@ def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
     open (see CLAUDE.md)."""
     kb = get_attack_collection()
     halves: list[Half] = []
+    window_seats: dict[str, int] = {}
 
     embedding = embed_text(text)
     result = kb.query(query_embeddings=[embedding], n_results=CANDIDATE_POOL)
@@ -174,12 +207,15 @@ def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
             window_result = kb.query(
                 query_embeddings=embed_texts(windows), n_results=CANDIDATE_POOL
             )
-            halves.append(_pooled_window_candidates(window_result, list(range(len(windows)))))
+            window_half, window_seats = _pooled_window_candidates(
+                window_result, list(range(len(windows)))
+            )
+            halves.append(window_half)
         halves.append(bm25_search_sentences(text, CANDIDATE_POOL))
     else:
         halves.append(bm25_search(text, CANDIDATE_POOL))
 
-    return _prepend_explicit_ids(text, _fuse(halves, top_k), top_k)
+    return _prepend_explicit_ids(text, _fuse(halves, top_k, window_seats), top_k)
 
 
 def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> dict[str, list[TechniqueMatch]]:
@@ -207,8 +243,9 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
     )
 
     # Sentence-window dense half: one batched KB query for every window of the
-    # report, grouped back per chunk and max-pooled.
-    window_half_by_chunk: dict[str, Half] = {}
+    # report, grouped back per chunk and max-pooled (plus each chunk's
+    # per-window seat set for fusion).
+    window_half_by_chunk: dict[str, tuple[Half, dict[str, int]]] = {}
     if settings.sentence_retrieval:
         windows = get_report_windows_collection().get(
             where={"report_id": report_id}, include=["embeddings", "metadatas"]
@@ -227,10 +264,12 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
                 for chunk_id, indices in indices_by_chunk.items()
             }
 
-    def halves_for(i: int, chunk_id: str) -> list[Half]:
+    def halves_for(i: int, chunk_id: str) -> tuple[list[Half], dict[str, int]]:
         halves = [_dense_candidates(result, i)]
+        window_seats: dict[str, int] = {}
         if chunk_id in window_half_by_chunk:
-            halves.append(window_half_by_chunk[chunk_id])
+            window_half, window_seats = window_half_by_chunk[chunk_id]
+            halves.append(window_half)
         if settings.sentence_retrieval:
             # Body only (chunk documents are "<breadcrumb>\n\n<body>"): the
             # breadcrumb line as a sentence voter crowns generic hits for the
@@ -240,13 +279,14 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
             halves.append(bm25_search_sentences(body, CANDIDATE_POOL))
         else:
             halves.append(bm25_search(chunks["documents"][i], CANDIDATE_POOL))
-        return halves
+        return halves, window_seats
 
-    return {
-        chunk_id: _prepend_explicit_ids(
+    def fused_for(i: int, chunk_id: str) -> list[TechniqueMatch]:
+        halves, window_seats = halves_for(i, chunk_id)
+        return _prepend_explicit_ids(
             chunks["documents"][i],
-            _fuse(halves_for(i, chunk_id), top_k_per_chunk),
+            _fuse(halves, top_k_per_chunk, window_seats),
             top_k_per_chunk,
         )
-        for i, chunk_id in enumerate(chunk_ids)
-    }
+
+    return {chunk_id: fused_for(i, chunk_id) for i, chunk_id in enumerate(chunk_ids)}

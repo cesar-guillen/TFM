@@ -48,6 +48,19 @@ class Settings(BaseSettings):
     # (windows are still embedded at ingest, so the flag flips without
     # re-ingesting).
     sentence_retrieval: bool = True
+    # Per-window priority seats in fusion: every sentence window's top-N dense
+    # hits are seated in the fused top_k AHEAD of fused-score ordering (deduped
+    # across windows; ordered by per-window rank tier, then fused score, if
+    # they alone would overflow top_k). Without this, rank-pooling ties all
+    # windows' #1 hits at pooled rank 1 and a minority sentence's #1 sorts
+    # behind the majority cluster's tie-break, misses the pooled half's
+    # RESERVE_PER_HALF prefix, and RRF buries it (measured on the Meridian
+    # Health report: 8 of 11 missed core techniques ranked ≤6 in the right
+    # chunk's windows — T1059.001 at window rank 1 — yet never became
+    # candidates; merely *reserving* them measured no better, because
+    # fused-score selection among a large reserved set re-buries them).
+    # Set WINDOW_SEAT_DEPTH=0 to disable for an ablation run.
+    window_seat_depth: int = 1
     cors_origins: list[str] = ["http://localhost:5173"]
 
     class Config:
