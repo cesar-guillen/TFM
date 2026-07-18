@@ -4,9 +4,18 @@ import { ingestPdf, type IngestStarted } from "../api/client";
 interface UploadPanelProps {
   onStarted: (result: IngestStarted) => void;
   variant?: "hero" | "compact";
+  /** High-precision mode toggle (owned by the page — the value is used when
+   * the mapping run starts, after ingest finishes). Omit to hide the toggle. */
+  highPrecision?: boolean;
+  onHighPrecisionChange?: (value: boolean) => void;
 }
 
-export default function UploadPanel({ onStarted, variant = "hero" }: UploadPanelProps) {
+export default function UploadPanel({
+  onStarted,
+  variant = "hero",
+  highPrecision,
+  onHighPrecisionChange,
+}: UploadPanelProps) {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -82,6 +91,21 @@ export default function UploadPanel({ onStarted, variant = "hero" }: UploadPanel
           style={{ display: "none" }}
         />
       </div>
+
+      {!compact && onHighPrecisionChange && (
+        <label className="uploader__option">
+          <input
+            type="checkbox"
+            checked={!!highPrecision}
+            onChange={(e) => onHighPrecisionChange(e.target.checked)}
+          />
+          <span>
+            <strong>High-precision mode</strong> — double-checks every mapped technique, cutting
+            false positives roughly in half; may drop some weakly-evidenced real techniques and
+            takes a bit longer.
+          </span>
+        </label>
+      )}
 
       {loading && (
         <div className="uploader__status">

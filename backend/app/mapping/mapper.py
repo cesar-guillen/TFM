@@ -12,6 +12,7 @@ Grounding rules (the hallucination mitigations from CLAUDE.md):
   (technique -> chunk -> char span in the source markdown).
 """
 
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -227,6 +228,101 @@ def _candidate_block(candidates: list[TechniqueMatch], descriptions: dict[str, s
     return "\n".join(lines)
 
 
+logger = logging.getLogger(__name__)
+
+# Optional second-pass verification ("high-precision mode" — per-run `verify`
+# on the map endpoint, default settings.verify_mappings): the verdict stage's
+# residual FPs are cousin-substitutions the model is *confident* about — real
+# evidence mapped to a merely-adjacent candidate with a reason that restates
+# the excerpt instead of justifying the technique ("misconfigured SUID binary"
+# mapped to Domain Controller Authentication). Prompt rules against this
+# measured as pure regressions (they suppressed marginal true verdicts while
+# every confident FP survived), so the fix is a task change: one yes/no
+# judgment per accepted mapping, with the technique description in context.
+# Measured N=8 (llama3.1:8b, both eval reports): unexpected mappings roughly
+# halve; exact recall pays ~1.5 techniques — the user picks the trade per run.
+VERIFY_SYSTEM_PROMPT = (
+    "You audit proposed MITRE ATT&CK technique mappings. Judge whether the "
+    "report passage shows the attacker using the specific mechanism the "
+    "technique describes — not merely a related topic, the same tactic, or "
+    "activity that belongs to a different technique (a scheduled task is not "
+    "a system service; abusing a SUID binary is not modifying an "
+    "authentication process). Also answer no when the described activity was "
+    "performed by defenders or the victim organization rather than the "
+    "adversary. Terse but on-point evidence still counts as yes."
+)
+
+_VERIFY_SCHEMA = {
+    "type": "object",
+    "properties": {"verdict": {"type": "string", "enum": ["yes", "no"]}},
+    "required": ["verdict"],
+}
+
+
+def _evidence_context(evidence: str, chunk: str, radius: int = 220) -> str:
+    """The sentence-scale region of the chunk around the evidence quote. The
+    judge must see the clause the quote anchors, not the bare fragment: the
+    mapper tends to quote 2-4 word anchors ('spearphishing email', 'Kerberos
+    service tickets'), and judged in isolation those made it reject
+    description-obvious true mappings (measured: T1566.001 went 0/8 on the
+    Health report with quote-only verification)."""
+    lo_chunk, lo_ev = chunk.lower(), evidence.lower().strip()
+    idx = lo_chunk.find(lo_ev)
+    if idx < 0:
+        # Condensed/canonicalized quote — anchor on its most distinctive token.
+        idx = -1
+        for token in sorted(_TOKEN_RE.findall(lo_ev), key=len, reverse=True):
+            if len(token) >= 5 and (idx := lo_chunk.find(token)) >= 0:
+                break
+        if idx < 0:
+            return evidence
+    start = max(0, idx - radius)
+    end = min(len(chunk), idx + len(lo_ev) + radius)
+    snippet = chunk[start:end].strip()
+    if start > 0:
+        snippet = "…" + snippet
+    if end < len(chunk):
+        snippet += "…"
+    return snippet
+
+
+def _verify_prompt(mapping: "ChunkMapping", description: str, context: str) -> str:
+    return (
+        f"Proposed technique: {mapping.technique_id} ({mapping.technique_name}): "
+        f"{description}\n\n"
+        "Report passage:\n"
+        "---\n"
+        f"{context}\n"
+        "---\n"
+        f'Quoted evidence: "{mapping.evidence}"\n'
+        f"Proposed rationale: {mapping.reason}\n\n"
+        "Does the passage show the attacker using this specific technique?"
+    )
+
+
+def _verify_mapping(
+    mapping: "ChunkMapping", description: str, chunk: str, client: httpx.Client
+) -> bool:
+    """One tiny constrained yes/no call; errors fail open (mapping kept) so a
+    transient Ollama hiccup can't silently eat true mappings."""
+    try:
+        result = chat_json(
+            _verify_prompt(mapping, description, _evidence_context(mapping.evidence, chunk)),
+            _VERIFY_SCHEMA,
+            client=client,
+            system=VERIFY_SYSTEM_PROMPT,
+        )
+    except Exception:
+        logger.warning("verification call failed for %s; keeping mapping", mapping.technique_id)
+        return True
+    if result.get("verdict") == "no":
+        logger.info(
+            "verification dropped %s (evidence: %r)", mapping.technique_id, mapping.evidence
+        )
+        return False
+    return True
+
+
 def _chunk_prompt(chunk_text: str, candidates: list[TechniqueMatch], descriptions: dict[str, str]) -> str:
     return (
         "Report excerpt:\n"
@@ -247,9 +343,13 @@ def map_report(
     report_id: str,
     on_progress: ProgressCallback | None = None,
     should_abort: AbortCheck | None = None,
+    verify: bool | None = None,
 ) -> list[ChunkMapping]:
     """Run stage 6 for one indexed report: hybrid candidates per chunk, one LLM
-    verdict per chunk, validated and flattened into ChunkMappings."""
+    verdict per chunk, validated and flattened into ChunkMappings. `verify`
+    turns the high-precision verification pass on/off for this run (None =
+    settings.verify_mappings)."""
+    verify_run = settings.verify_mappings if verify is None else verify
     candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=settings.map_candidates)
     if not candidates_by_chunk:
         return []
@@ -302,6 +402,13 @@ def map_report(
                     reason=(m.get("reason") or "").strip()[:250],
                 )
             )
+        if verify_run:
+            accepted = [
+                m for m in accepted
+                if _verify_mapping(
+                    m, descriptions.get(m.technique_id, ""), chunk_text[chunk_id], client
+                )
+            ]
         return accepted
 
     # Chunks resolve concurrently (map_workers must not exceed the ollama

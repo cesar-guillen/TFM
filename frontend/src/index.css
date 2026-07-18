@@ -976,6 +976,29 @@ body {
   color: var(--text-dim);
 }
 
+/* High-precision mode toggle under the dropzone. */
+.uploader__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.uploader__option input[type="checkbox"] {
+  margin-top: 0.15rem;
+  accent-color: var(--accent, #4f8ef7);
+  cursor: pointer;
+}
+
+.uploader__option strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* ── Dashboard: main view (matrix library + upload) ──────────────────────── */
 
 .dashboard-main {

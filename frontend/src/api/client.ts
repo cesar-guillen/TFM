@@ -63,8 +63,21 @@ export interface MappingStatus {
   step_seconds: Record<string, number>;
 }
 
-export async function startMapping(reportId: string): Promise<{ report_id: string; status: MappingStatusValue }> {
-  const res = await fetch(`/api/reports/${reportId}/map`, { method: "POST" });
+export interface MapOptions {
+  /** High-precision mode: run the verification pass — fewer false positives,
+   * may drop some weakly-evidenced true techniques. Omit for the default. */
+  verify?: boolean;
+}
+
+export async function startMapping(
+  reportId: string,
+  options?: MapOptions,
+): Promise<{ report_id: string; status: MappingStatusValue }> {
+  const res = await fetch(`/api/reports/${reportId}/map`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options ?? {}),
+  });
   if (!res.ok) {
     throw new Error(`Starting mapping failed: ${res.status} ${await res.text()}`);
   }

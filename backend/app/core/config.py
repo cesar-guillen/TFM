@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     # fused-score selection among a large reserved set re-buries them).
     # Set WINDOW_SEAT_DEPTH=0 to disable for an ablation run.
     window_seat_depth: int = 1
+    # Default for the mapping verification pass ("high-precision mode"): each
+    # accepted mapping gets one small yes/no judge call (technique description
+    # + evidence quote + the ±220-char passage around it). Measured N=8 on
+    # both eval reports: roughly halves false positives (Health 19.9→10.1
+    # unexpected/run) at a cost of ~1.5 exact recall including some solid
+    # techniques (T1490, T1021.002 dropped to 0/8) — a trade-off the user
+    # picks per run, so this is exposed as a toggle in the upload UI and a
+    # per-run `verify` field on POST /reports/{id}/map (which overrides this
+    # default). Verification errors fail open (mapping kept).
+    verify_mappings: bool = False
     cors_origins: list[str] = ["http://localhost:5173"]
 
     class Config:

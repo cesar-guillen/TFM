@@ -3,6 +3,7 @@ import time
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
 
 from app.api.routes import matrix
 from app.core import warmup
@@ -25,7 +26,18 @@ from app.mapping.mapper import MappingAborted, map_report
 router = APIRouter()
 
 
-def _process(report_id: str) -> None:
+class MapOptions(BaseModel):
+    """Per-run mapping options (POST body, all optional — an empty/absent body
+    keeps the configured defaults)."""
+
+    # High-precision mode: run the verification pass (fewer false positives at
+    # the cost of some weakly-evidenced true techniques — see
+    # settings.verify_mappings for the measured trade-off). None = the
+    # VERIFY_MAPPINGS default.
+    verify: bool | None = None
+
+
+def _process(report_id: str, verify: bool | None = None) -> None:
     """Background stage 6+7 run; mirrors the ingest job pattern (poll via
     GET /reports/{report_id}/map/status) since mapping is minutes-slow on CPU."""
     try:
@@ -69,6 +81,7 @@ def _process(report_id: str) -> None:
             report_id,
             on_progress=on_progress,
             should_abort=lambda: is_cancel_requested(report_id),
+            verify=verify,
         )
         update_job(report_id, status="aggregating")
         layer = aggregate_mappings(mappings)
@@ -106,9 +119,12 @@ def _process(report_id: str) -> None:
 
 
 @router.post("/reports/{report_id}/map")
-def start_mapping(report_id: str, background_tasks: BackgroundTasks):
+def start_mapping(
+    report_id: str, background_tasks: BackgroundTasks, options: MapOptions | None = None
+):
     """Kick off LLM mapping for an ingested report. Returns immediately; poll
-    the status endpoint for progress and the resulting layer."""
+    the status endpoint for progress and the resulting layer. The optional
+    JSON body carries per-run options (see MapOptions)."""
     ingest_job = get_ingest_job(report_id)
     if ingest_job is None:
         raise HTTPException(status_code=404, detail="Unknown report_id")
@@ -120,7 +136,7 @@ def start_mapping(report_id: str, background_tasks: BackgroundTasks):
         return {"report_id": report_id, "status": existing.status}
 
     create_job(report_id)
-    background_tasks.add_task(_process, report_id)
+    background_tasks.add_task(_process, report_id, options.verify if options else None)
     return {"report_id": report_id, "status": "retrieving"}
 
 

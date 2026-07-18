@@ -27,6 +27,15 @@ import { formatDuration } from "../utils/format";
  * floating progress bubble), and back to the library afterwards. */
 export default function DashboardPage() {
   const [started, setStarted] = useState<IngestStarted | null>(null);
+  // High-precision mode (verification pass): chosen before upload, applied
+  // when the mapping run starts. Persisted so the choice sticks across runs.
+  const [highPrecision, setHighPrecision] = useState(
+    () => localStorage.getItem("tfm-high-precision") === "1",
+  );
+  function handleHighPrecisionChange(value: boolean) {
+    setHighPrecision(value);
+    localStorage.setItem("tfm-high-precision", value ? "1" : "0");
+  }
   const [mappingReportId, setMappingReportId] = useState<string | null>(null);
   const [mapAttempt, setMapAttempt] = useState(0);
   const [startingMap, setStartingMap] = useState(false);
@@ -50,7 +59,7 @@ export default function DashboardPage() {
     if (!started) return;
     setStartingMap(true);
     try {
-      await startMapping(started.report_id);
+      await startMapping(started.report_id, { verify: highPrecision });
       setMappingReportId(started.report_id);
       setMapAttempt((a) => a + 1); // restart polling even if the report id didn't change (retry)
     } catch (e) {
@@ -143,7 +152,12 @@ export default function DashboardPage() {
           <p className="dashboard-hero__subtitle">
             Drop an incident report, pentest result, or security policy PDF to generate its ATT&amp;CK matrix.
           </p>
-          <UploadPanel variant="hero" onStarted={handleStarted} />
+          <UploadPanel
+            variant="hero"
+            onStarted={handleStarted}
+            highPrecision={highPrecision}
+            onHighPrecisionChange={handleHighPrecisionChange}
+          />
         </section>
 
         <section className="matrix-library">
