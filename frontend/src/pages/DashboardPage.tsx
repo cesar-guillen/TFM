@@ -8,6 +8,7 @@ import {
   startMapping,
   type IngestStarted,
   type SavedMatrixSummary,
+  type VerifyMode,
 } from "../api/client";
 import MatrixHistoryMenu from "../components/MatrixHistoryMenu";
 import MatrixOverview from "../components/MatrixOverview";
@@ -27,14 +28,15 @@ import { formatDuration } from "../utils/format";
  * floating progress bubble), and back to the library afterwards. */
 export default function DashboardPage() {
   const [started, setStarted] = useState<IngestStarted | null>(null);
-  // High-precision mode (verification pass): chosen before upload, applied
-  // when the mapping run starts. Persisted so the choice sticks across runs.
-  const [highPrecision, setHighPrecision] = useState(
-    () => localStorage.getItem("tfm-high-precision") === "1",
-  );
-  function handleHighPrecisionChange(value: boolean) {
-    setHighPrecision(value);
-    localStorage.setItem("tfm-high-precision", value ? "1" : "0");
+  // Verification mode (false-positive filtering): chosen before upload,
+  // applied when the mapping run starts. Persisted so the choice sticks.
+  const [verifyMode, setVerifyMode] = useState<VerifyMode>(() => {
+    const saved = localStorage.getItem("tfm-verify-mode");
+    return saved === "demote" || saved === "drop" ? saved : "off";
+  });
+  function handleVerifyModeChange(value: VerifyMode) {
+    setVerifyMode(value);
+    localStorage.setItem("tfm-verify-mode", value);
   }
   const [mappingReportId, setMappingReportId] = useState<string | null>(null);
   const [mapAttempt, setMapAttempt] = useState(0);
@@ -59,7 +61,7 @@ export default function DashboardPage() {
     if (!started) return;
     setStartingMap(true);
     try {
-      await startMapping(started.report_id, { verify: highPrecision });
+      await startMapping(started.report_id, { verify_mode: verifyMode });
       setMappingReportId(started.report_id);
       setMapAttempt((a) => a + 1); // restart polling even if the report id didn't change (retry)
     } catch (e) {
@@ -155,8 +157,8 @@ export default function DashboardPage() {
           <UploadPanel
             variant="hero"
             onStarted={handleStarted}
-            highPrecision={highPrecision}
-            onHighPrecisionChange={handleHighPrecisionChange}
+            verifyMode={verifyMode}
+            onVerifyModeChange={handleVerifyModeChange}
           />
         </section>
 

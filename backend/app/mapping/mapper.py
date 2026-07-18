@@ -181,6 +181,13 @@ def _evidence_in_chunk(evidence: str, chunk: str) -> bool:
 # not outrank one we could.
 SALVAGED_CONFIDENCE = 30
 
+# A mapping the model itself scores below this is a self-declared non-mapping
+# and is dropped — observed in a real run: 8 techniques mapped at confidence 0
+# off a title-page banner, each with a comment explaining the report was
+# synthetic. The rubric's genuine "weak but real" tier sits at ~30, so a floor
+# of 10 only removes declared junk.
+MIN_CONFIDENCE = 10
+
 
 def _response_schema(candidate_ids: list[str]) -> dict:
     """Schema for one chunk's verdict; technique_id is an enum of this chunk's
@@ -230,17 +237,21 @@ def _candidate_block(candidates: list[TechniqueMatch], descriptions: dict[str, s
 
 logger = logging.getLogger(__name__)
 
-# Optional second-pass verification ("high-precision mode" — per-run `verify`
-# on the map endpoint, default settings.verify_mappings): the verdict stage's
-# residual FPs are cousin-substitutions the model is *confident* about — real
-# evidence mapped to a merely-adjacent candidate with a reason that restates
-# the excerpt instead of justifying the technique ("misconfigured SUID binary"
+# Optional second-pass verification (per-run `verify_mode` on the map
+# endpoint, default settings.verify_mode): the verdict stage's residual FPs
+# are cousin-substitutions the model is *confident* about — real evidence
+# mapped to a merely-adjacent candidate with a reason that restates the
+# excerpt instead of justifying the technique ("misconfigured SUID binary"
 # mapped to Domain Controller Authentication). Prompt rules against this
 # measured as pure regressions (they suppressed marginal true verdicts while
 # every confident FP survived), so the fix is a task change: one yes/no
 # judgment per accepted mapping, with the technique description in context.
-# Measured N=8 (llama3.1:8b, both eval reports): unexpected mappings roughly
-# halve; exact recall pays ~1.5 techniques — the user picks the trade per run.
+# Measured N=8 (llama3.1:8b, both eval reports, rejections removed):
+# unexpected mappings roughly halve; exact recall pays ~1.5 techniques. The
+# per-run mode picks what a rejection does: "drop" removes it (strict),
+# "demote" keeps it capped at DEMOTED_CONFIDENCE with a marked comment
+# (balanced — nothing vanishes, suspected FPs just fall to the faint end of
+# the heat scale), "off" skips judging entirely.
 VERIFY_SYSTEM_PROMPT = (
     "You audit proposed MITRE ATT&CK technique mappings. Judge whether the "
     "report passage shows the attacker using the specific mechanism the "
@@ -249,7 +260,10 @@ VERIFY_SYSTEM_PROMPT = (
     "a system service; abusing a SUID binary is not modifying an "
     "authentication process). Also answer no when the described activity was "
     "performed by defenders or the victim organization rather than the "
-    "adversary. Terse but on-point evidence still counts as yes."
+    "adversary. Terse but on-point evidence still counts as yes, and so does "
+    "evidence naming a specific mechanism, protocol, or tool the technique "
+    "or one of its sub-techniques covers — 'Remote Desktop Protocol' shows "
+    "the broader Remote Services technique in use."
 )
 
 _VERIFY_SCHEMA = {
@@ -257,6 +271,13 @@ _VERIFY_SCHEMA = {
     "properties": {"verdict": {"type": "string", "enum": ["yes", "no"]}},
     "required": ["verdict"],
 }
+
+VERIFY_MODES = ("off", "demote", "drop")
+
+# Score a judge-rejected mapping is capped at in "demote" mode: below the
+# rubric's "low" (30) so flagged cells sort/render as the weakest tier, above
+# 0 so they don't read as the score-0 junk cells this pipeline once produced.
+DEMOTED_CONFIDENCE = 20
 
 
 def _evidence_context(evidence: str, chunk: str, radius: int = 220) -> str:
@@ -343,13 +364,15 @@ def map_report(
     report_id: str,
     on_progress: ProgressCallback | None = None,
     should_abort: AbortCheck | None = None,
-    verify: bool | None = None,
+    verify: str | None = None,
 ) -> list[ChunkMapping]:
     """Run stage 6 for one indexed report: hybrid candidates per chunk, one LLM
     verdict per chunk, validated and flattened into ChunkMappings. `verify`
-    turns the high-precision verification pass on/off for this run (None =
-    settings.verify_mappings)."""
-    verify_run = settings.verify_mappings if verify is None else verify
+    picks this run's verification mode — "off" | "demote" | "drop" (None =
+    settings.verify_mode)."""
+    verify_run = settings.verify_mode if verify is None else verify
+    if verify_run not in VERIFY_MODES:
+        raise ValueError(f"verify must be one of {VERIFY_MODES}, got {verify_run!r}")
     candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=settings.map_candidates)
     if not candidates_by_chunk:
         return []
@@ -391,6 +414,8 @@ def map_report(
             if not isinstance(confidence, (int, float)):
                 confidence = SALVAGED_CONFIDENCE  # salvaged/truncated verdicts may lack it
             confidence = max(0, min(100, int(confidence)))
+            if confidence < MIN_CONFIDENCE:
+                continue  # the model itself rates this a non-mapping
             accepted.append(
                 ChunkMapping(
                     chunk_id=chunk_id,
@@ -402,13 +427,6 @@ def map_report(
                     reason=(m.get("reason") or "").strip()[:250],
                 )
             )
-        if verify_run:
-            accepted = [
-                m for m in accepted
-                if _verify_mapping(
-                    m, descriptions.get(m.technique_id, ""), chunk_text[chunk_id], client
-                )
-            ]
         return accepted
 
     # Chunks resolve concurrently (map_workers must not exceed the ollama
@@ -449,4 +467,34 @@ def map_report(
                 # error reaches the job.
                 pool.shutdown(wait=False, cancel_futures=True)
                 raise
-    return [m for cid in ordered for m in by_chunk.get(cid, [])]
+
+        result = [m for cid in ordered for m in by_chunk.get(cid, [])]
+
+        # Verification runs as its own phase AFTER every verdict has landed,
+        # not interleaved per chunk, for two measured reasons: (a) verify
+        # calls landing mid-verdict-stage evict the verdict prompt's cached
+        # prefix from Ollama's slots (all slots are verdict-warm while the
+        # pool is busy — the server routes by best prefix match, but only
+        # among free capacity), and (b) interleaving changes decode batch
+        # composition, which measurably perturbs the verdicts themselves
+        # (the nondeterminism mechanism; solid techniques flipped 8/8→0/8
+        # when extra calls ran alongside the verdict stage).
+        if verify_run != "off" and result:
+            if should_abort and should_abort():
+                raise MappingAborted()
+
+            def verify_one(m: ChunkMapping) -> ChunkMapping | None:
+                if _verify_mapping(
+                    m, descriptions.get(m.technique_id, ""), chunk_text[m.chunk_id], client
+                ):
+                    return m
+                if verify_run == "demote":
+                    m.confidence = min(m.confidence, DEMOTED_CONFIDENCE)
+                    m.reason = f"[flagged by verification] {m.reason}"
+                    return m
+                return None
+
+            with ThreadPoolExecutor(max_workers=resolve_map_workers()) as verify_pool:
+                verified = list(verify_pool.map(verify_one, result))
+            result = [m for m in verified if m is not None]
+    return result

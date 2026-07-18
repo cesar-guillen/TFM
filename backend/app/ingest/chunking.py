@@ -110,6 +110,41 @@ def classify_heading_path(heading_path: list[str]) -> SectionRole:
     return "content"
 
 
+# A "Key: value" metadata line (report reference, prepared-by, date…) as found
+# on title pages. Emphasis markers are stripped before matching.
+KEY_VALUE_RE = re.compile(r"^[^:\n]{1,40}:\s*\S")
+
+
+def classify_untitled(body: str) -> SectionRole:
+    """Role of a chunk with no heading path — the pre-first-heading preamble
+    (title page, classification banners, report metadata). classify_heading_path
+    has nothing to classify there, and defaulting to `content` let banner text
+    reach the mapper: a real run mapped 8 techniques at confidence 0 off the
+    'SIMULATED / SYNTHETIC DATA' banner of a test report. Furniture lines are
+    banners, boilerplate keywords, key-value metadata, and short unpunctuated
+    title fragments; a majority of them marks the chunk boilerplate, while an
+    untitled prose introduction (long, sentence-punctuated lines) stays
+    content. Applied to the document's FIRST chunk only: some reports style
+    every heading as bold text markdown never recognizes, so their whole body
+    has empty heading paths — content-classifying all of it misfiled real
+    attack-narrative chunks (timeline bullets look like key-value metadata),
+    while the observed failure lives on the title page alone."""
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    if not lines:
+        return "boilerplate"
+    furniture = 0
+    for line in lines:
+        bare = re.sub(r"[*_#]", "", line).strip()
+        if (
+            BANNER_RE.search(bare)
+            or BOILERPLATE_RE.search(bare)
+            or KEY_VALUE_RE.match(bare)
+            or (len(bare) < 60 and not bare.endswith((".", "!", "?", ":")))
+        ):
+            furniture += 1
+    return "boilerplate" if furniture * 2 >= len(lines) else "content"
+
+
 def _clean_heading(text: str) -> str:
     text = text.strip().rstrip("#").strip()  # trailing ATX closers
     while True:
@@ -223,7 +258,12 @@ def chunk_markdown(
                 order=order,
                 start_char=buffer[0][1],
                 end_char=buffer[-1][2],
-                section_role=role_override or classify_heading_path(path),
+                section_role=role_override
+                or (
+                    classify_heading_path(path)
+                    if path
+                    else (classify_untitled(body) if order == 0 else "content")
+                ),
             )
         )
         order += 1
@@ -240,7 +280,9 @@ def chunk_markdown(
                 order=order,
                 start_char=start,
                 end_char=end,
-                section_role=classify_heading_path(path),
+                section_role=classify_heading_path(path)
+                if path
+                else (classify_untitled(text) if order == 0 else "content"),
             )
         )
         order += 1

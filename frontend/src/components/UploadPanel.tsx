@@ -1,20 +1,27 @@
 import { useRef, useState } from "react";
-import { ingestPdf, type IngestStarted } from "../api/client";
+import { ingestPdf, type IngestStarted, type VerifyMode } from "../api/client";
+
+const VERIFY_MODE_HINTS: Record<VerifyMode, string> = {
+  off: "Every technique the model maps is kept as-is. Fastest.",
+  demote:
+    "Each mapped technique is double-checked; ones that fail the check stay in the matrix but are scored near zero and marked, so you can review or ignore them.",
+  drop: "Each mapped technique is double-checked; ones that fail the check are removed. Fewest false positives, but can lose weakly-evidenced real techniques.",
+};
 
 interface UploadPanelProps {
   onStarted: (result: IngestStarted) => void;
   variant?: "hero" | "compact";
-  /** High-precision mode toggle (owned by the page — the value is used when
-   * the mapping run starts, after ingest finishes). Omit to hide the toggle. */
-  highPrecision?: boolean;
-  onHighPrecisionChange?: (value: boolean) => void;
+  /** Verification-mode picker (owned by the page — the value is used when
+   * the mapping run starts, after ingest finishes). Omit to hide it. */
+  verifyMode?: VerifyMode;
+  onVerifyModeChange?: (value: VerifyMode) => void;
 }
 
 export default function UploadPanel({
   onStarted,
   variant = "hero",
-  highPrecision,
-  onHighPrecisionChange,
+  verifyMode = "off",
+  onVerifyModeChange,
 }: UploadPanelProps) {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -92,19 +99,27 @@ export default function UploadPanel({
         />
       </div>
 
-      {!compact && onHighPrecisionChange && (
-        <label className="uploader__option">
-          <input
-            type="checkbox"
-            checked={!!highPrecision}
-            onChange={(e) => onHighPrecisionChange(e.target.checked)}
-          />
-          <span>
-            <strong>High-precision mode</strong> — double-checks every mapped technique, cutting
-            false positives roughly in half; may drop some weakly-evidenced real techniques and
-            takes a bit longer.
-          </span>
-        </label>
+      {!compact && onVerifyModeChange && (
+        <div className="uploader__option">
+          <div className="uploader__option-row">
+            <strong>False-positive filtering</strong>
+            <div className="uploader__modes" role="radiogroup" aria-label="False-positive filtering">
+              {(["off", "demote", "drop"] as VerifyMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={verifyMode === mode}
+                  className={`uploader__mode${verifyMode === mode ? " uploader__mode--active" : ""}`}
+                  onClick={() => onVerifyModeChange(mode)}
+                >
+                  {mode === "off" ? "Off" : mode === "demote" ? "Balanced" : "Strict"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="uploader__option-hint">{VERIFY_MODE_HINTS[verifyMode]}</div>
+        </div>
       )}
 
       {loading && (

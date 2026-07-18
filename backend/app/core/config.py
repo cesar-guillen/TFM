@@ -61,16 +61,21 @@ class Settings(BaseSettings):
     # fused-score selection among a large reserved set re-buries them).
     # Set WINDOW_SEAT_DEPTH=0 to disable for an ablation run.
     window_seat_depth: int = 1
-    # Default for the mapping verification pass ("high-precision mode"): each
-    # accepted mapping gets one small yes/no judge call (technique description
-    # + evidence quote + the ±220-char passage around it). Measured N=8 on
-    # both eval reports: roughly halves false positives (Health 19.9→10.1
-    # unexpected/run) at a cost of ~1.5 exact recall including some solid
-    # techniques (T1490, T1021.002 dropped to 0/8) — a trade-off the user
-    # picks per run, so this is exposed as a toggle in the upload UI and a
-    # per-run `verify` field on POST /reports/{id}/map (which overrides this
-    # default). Verification errors fail open (mapping kept).
-    verify_mappings: bool = False
+    # Default mode for the mapping verification pass: each accepted mapping
+    # gets one small yes/no judge call (technique description + evidence quote
+    # + the ±220-char passage around it). Measured N=8 on both eval reports:
+    # judge-rejected mappings are FPs about twice as often as not (Health
+    # unexpected 19.9→10.1/run when removed) but include some solid techniques
+    # (T1490, T1021.002 went to 0/8) — so what to DO with a rejection is the
+    # user's per-run choice, exposed in the upload UI and as `verify_mode` on
+    # POST /reports/{id}/map (which overrides this default):
+    #   "off"    — no judging (fastest; every verdict kept as-is)
+    #   "demote" — flagged mappings are kept but capped at a near-floor score
+    #              and their comment marked, so they fall to the faint end of
+    #              the matrix instead of vanishing (the balanced middle)
+    #   "drop"   — flagged mappings are removed (max precision)
+    # Verification errors always fail open (mapping kept unchanged).
+    verify_mode: str = "off"
     cors_origins: list[str] = ["http://localhost:5173"]
 
     class Config:

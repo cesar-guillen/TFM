@@ -1,6 +1,8 @@
 import os
 import time
 
+from typing import Literal
+
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -30,14 +32,14 @@ class MapOptions(BaseModel):
     """Per-run mapping options (POST body, all optional — an empty/absent body
     keeps the configured defaults)."""
 
-    # High-precision mode: run the verification pass (fewer false positives at
-    # the cost of some weakly-evidenced true techniques — see
-    # settings.verify_mappings for the measured trade-off). None = the
-    # VERIFY_MAPPINGS default.
-    verify: bool | None = None
+    # Verification mode: "off" (no judging), "demote" (flagged mappings kept
+    # at a near-floor score with a marked comment), "drop" (flagged mappings
+    # removed) — see settings.verify_mode for the measured trade-offs.
+    # None = the VERIFY_MODE default.
+    verify_mode: Literal["off", "demote", "drop"] | None = None
 
 
-def _process(report_id: str, verify: bool | None = None) -> None:
+def _process(report_id: str, verify: str | None = None) -> None:
     """Background stage 6+7 run; mirrors the ingest job pattern (poll via
     GET /reports/{report_id}/map/status) since mapping is minutes-slow on CPU."""
     try:
@@ -136,7 +138,7 @@ def start_mapping(
         return {"report_id": report_id, "status": existing.status}
 
     create_job(report_id)
-    background_tasks.add_task(_process, report_id, options.verify if options else None)
+    background_tasks.add_task(_process, report_id, options.verify_mode if options else None)
     return {"report_id": report_id, "status": "retrieving"}
 
 

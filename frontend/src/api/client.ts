@@ -63,10 +63,14 @@ export interface MappingStatus {
   step_seconds: Record<string, number>;
 }
 
+/** What the verification pass does with a mapping it can't confirm:
+ * "off" = no verification, "demote" = keep it at a near-floor score with a
+ * marked comment, "drop" = remove it. */
+export type VerifyMode = "off" | "demote" | "drop";
+
 export interface MapOptions {
-  /** High-precision mode: run the verification pass — fewer false positives,
-   * may drop some weakly-evidenced true techniques. Omit for the default. */
-  verify?: boolean;
+  /** Verification mode for this run. Omit for the server default. */
+  verify_mode?: VerifyMode;
 }
 
 export async function startMapping(
