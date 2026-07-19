@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   cancelIngest,
   cancelMapping,
@@ -58,7 +58,6 @@ export default function DashboardPage() {
   const job = useIngestJob(started?.report_id ?? null);
   const mappingJob = useMappingJob(mappingReportId, mapAttempt);
   const { catalog, loading, error } = useAttackData();
-  const navigate = useNavigate();
 
   // A new upload replaces the previous report *and* its mapping run.
   function handleStarted(next: IngestStarted) {
@@ -146,7 +145,8 @@ export default function DashboardPage() {
   }, [started]);
 
   async function handleDelete(e: React.MouseEvent, id: string) {
-    e.stopPropagation(); // don't also open the card
+    e.preventDefault(); // the card is a link now — don't navigate
+    e.stopPropagation();
     try {
       await deleteSavedMatrix(id);
       setEntries((list) => list?.filter((entry) => entry.id !== id) ?? null);
@@ -197,15 +197,12 @@ export default function DashboardPage() {
           {entries && entries.length > 0 && (
             <div className="matrix-library__grid">
               {entries.map((entry) => (
-                <div
+                // A real link (not a div with onClick) so middle-click / ctrl-click
+                // opens the matrix in a new tab; plain click still SPA-navigates.
+                <Link
                   key={entry.id}
+                  to={`/matrix?saved=${entry.id}`}
                   className="matrix-card"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(`/matrix?saved=${entry.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") navigate(`/matrix?saved=${entry.id}`);
-                  }}
                   title="Open in the matrix editor"
                 >
                   <div className="matrix-card__top">
@@ -229,7 +226,7 @@ export default function DashboardPage() {
                       {new Date(entry.updated_at ?? entry.created_at).toLocaleString()}
                     </span>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

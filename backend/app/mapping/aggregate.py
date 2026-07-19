@@ -10,12 +10,12 @@ from collections import defaultdict
 
 from app.mapping.mapper import ChunkMapping
 
-# Score for a parent technique that wasn't mapped itself but has a mapped
-# sub-technique: the matrix collapses sub-techniques by default, so without
-# highlighting the parent the user could miss the flagged sub entirely. A
-# neutral mid-scale value — visible, but not outranking direct high-confidence
-# evidence.
-PARENT_OF_MAPPED_SUB_SCORE = 50
+# A parent technique that wasn't mapped itself but has mapped sub-techniques
+# gets a synthetic entry (the matrix collapses sub-techniques by default, so
+# without highlighting the parent the user could miss the flagged subs
+# entirely) scored as the *average* of its subs' scores — the parent reflects
+# the family's overall evidence strength, and can never outrank its own best
+# sub (relevant in demote mode, where flagged subs are capped low).
 
 
 def _evidence_line(m: ChunkMapping) -> str:
@@ -46,8 +46,6 @@ def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19")
         )
 
     # Promote parents of mapped sub-techniques that weren't mapped themselves.
-    # The synthetic score never exceeds the best sub's own score — a parent
-    # whose only evidence is verification-demoted subs must not outrank them.
     mapped = set(by_technique)
     for parent_id in sorted({tid.split(".")[0] for tid in mapped if "." in tid} - mapped):
         subs = sorted(tid for tid in mapped if tid.startswith(parent_id + "."))
@@ -55,11 +53,11 @@ def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19")
             f"{i}. {by_technique[sub_id][0].technique_name} ({sub_id})"
             for i, sub_id in enumerate(subs, 1)
         )
-        best_sub = max(h.confidence for sub_id in subs for h in by_technique[sub_id])
+        sub_scores = [max(h.confidence for h in by_technique[sub_id]) for sub_id in subs]
         techniques.append(
             {
                 "techniqueID": parent_id,
-                "score": min(PARENT_OF_MAPPED_SUB_SCORE, best_sub),
+                "score": round(sum(sub_scores) / len(sub_scores)),
                 "comment": f"Identified subtechniques:\n{listing}",
                 "enabled": True,
             }

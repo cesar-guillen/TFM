@@ -43,15 +43,27 @@ export type LayerState = Record<string, { score: number; comment?: string }>;
 /** Vertical ordering of techniques inside each tactic column. */
 export type TechniqueSort = "default" | "score" | "name";
 
-/** Sort key for a parent row: its own score or its best sub-technique's, so a
- * parent highlighted only via a sub still ranks by that evidence. */
+/** Sort key for a parent row: the average score of every marked entry in its
+ * group (its own, if scored, plus each marked sub-technique) — so a parent
+ * with several strong subs outranks one carried by a single lucky sub, and a
+ * parent highlighted only via a sub still ranks by that evidence. Unmarked
+ * groups sink below any marked one. */
 function groupScore(tech: CatalogTechnique, layer: LayerState): number {
-  let max = layer[tech.id]?.score ?? -1;
+  let sum = 0;
+  let count = 0;
+  const own = layer[tech.id]?.score;
+  if (own !== undefined) {
+    sum += own;
+    count += 1;
+  }
   for (const sub of tech.subtechniques) {
     const score = layer[sub.id]?.score;
-    if (score !== undefined && score > max) max = score;
+    if (score !== undefined) {
+      sum += score;
+      count += 1;
+    }
   }
-  return max;
+  return count === 0 ? -1 : sum / count;
 }
 
 export function sortTechniques(

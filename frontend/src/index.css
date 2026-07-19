@@ -1119,6 +1119,8 @@ body {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  color: inherit; /* it's an <a> — keep card text colors, no link styling */
+  text-decoration: none;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
