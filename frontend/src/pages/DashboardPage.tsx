@@ -8,6 +8,7 @@ import {
   startMapping,
   type IngestStarted,
   type SavedMatrixSummary,
+  type VerdictMode,
   type VerifyMode,
 } from "../api/client";
 import MatrixHistoryMenu from "../components/MatrixHistoryMenu";
@@ -38,6 +39,15 @@ export default function DashboardPage() {
     setVerifyMode(value);
     localStorage.setItem("tfm-verify-mode", value);
   }
+  // Verdict architecture (grouped vs individual technique judging), same
+  // ownership pattern as verifyMode.
+  const [verdictMode, setVerdictMode] = useState<VerdictMode>(() =>
+    localStorage.getItem("tfm-verdict-mode") === "independent" ? "independent" : "menu",
+  );
+  function handleVerdictModeChange(value: VerdictMode) {
+    setVerdictMode(value);
+    localStorage.setItem("tfm-verdict-mode", value);
+  }
   const [mappingReportId, setMappingReportId] = useState<string | null>(null);
   const [mapAttempt, setMapAttempt] = useState(0);
   const [startingMap, setStartingMap] = useState(false);
@@ -61,7 +71,7 @@ export default function DashboardPage() {
     if (!started) return;
     setStartingMap(true);
     try {
-      await startMapping(started.report_id, { verify_mode: verifyMode });
+      await startMapping(started.report_id, { verify_mode: verifyMode, verdict_mode: verdictMode });
       setMappingReportId(started.report_id);
       setMapAttempt((a) => a + 1); // restart polling even if the report id didn't change (retry)
     } catch (e) {
@@ -159,6 +169,8 @@ export default function DashboardPage() {
             onStarted={handleStarted}
             verifyMode={verifyMode}
             onVerifyModeChange={handleVerifyModeChange}
+            verdictMode={verdictMode}
+            onVerdictModeChange={handleVerdictModeChange}
           />
         </section>
 

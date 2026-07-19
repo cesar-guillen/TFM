@@ -1,9 +1,11 @@
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 from app.attack.embeddings import embed_text, embed_texts
 from app.core.chroma import (
     get_attack_collection,
+    get_attack_examples_collection,
     get_report_chunks_collection,
     get_report_windows_collection,
 )
@@ -31,6 +33,23 @@ RESERVE_PER_HALF = 2
 # can surface these — KB documents carry names + descriptions, not ids — so
 # they are injected as candidates directly (see _prepend_explicit_ids).
 ATTACK_ID_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+
+# Remote-access mechanisms that ARE a technique's name: when the bare token
+# appears in a chunk, the matching sub-technique is injected as a candidate
+# alongside explicitly-cited ids. Measured motivation: "alternating between
+# SSH, RDP, and WinRM sessions" produced a menu that was 100% Kerberos-family
+# — the protocol sentence loses every retrieval half's slot competition to the
+# chunk's dominant topic (rank-pooling tie-breaks favor the majority cluster),
+# leaving textbook lateral movement unmappable. Deliberately tiny and curated:
+# each token names exactly one mechanism with one canonical sub-technique, so
+# injection is near-zero-risk (the verdict stage still judges the evidence).
+MECHANISM_ALIASES = {
+    "ssh": "T1021.004",
+    "rdp": "T1021.001",
+    "winrm": "T1021.006",
+    "vnc": "T1021.005",
+}
+_MECHANISM_TOKEN_RE = re.compile(r"[a-z0-9]+")
 # Sorts above any fused RRF score (three #1 ranks ≈ 3/(60+1) ≈ 0.049), so
 # chunks with citations also lead the mapper's strongest-first submission.
 EXPLICIT_ID_SCORE = 1.0
@@ -124,13 +143,18 @@ def _fuse(
 def _prepend_explicit_ids(
     text: str, fused: list[TechniqueMatch], top_k: int
 ) -> list[TechniqueMatch]:
-    """Put techniques the text cites by id ahead of the retrieval candidates,
-    keeping the total at top_k so the mapper's prompt budget doesn't grow.
-    Cited ids missing from the KB (deprecated/revoked, typos) just don't come
-    back from the collection and are dropped silently."""
+    """Put techniques the text cites by id — or names by mechanism token (see
+    MECHANISM_ALIASES) — ahead of the retrieval candidates, keeping the total
+    at top_k so the mapper's prompt budget doesn't grow. Cited ids missing
+    from the KB (deprecated/revoked, typos) just don't come back from the
+    collection and are dropped silently."""
     if not settings.explicit_ids:
         return fused
     cited = sorted({m.group(0).upper() for m in ATTACK_ID_RE.finditer(text)})
+    tokens = set(_MECHANISM_TOKEN_RE.findall(text.lower()))
+    cited += sorted(
+        {tid for token, tid in MECHANISM_ALIASES.items() if token in tokens} - set(cited)
+    )
     if not cited:
         return fused
     kb = get_attack_collection().get(ids=cited, include=["metadatas"])
@@ -150,9 +174,48 @@ def _dense_candidates(result: dict, i: int) -> Half:
     return list(zip(result["ids"][i], result["metadatas"][i], result["distances"][i]))
 
 
-def _pooled_window_candidates(result: dict, indices: list[int]) -> tuple[Half, dict[str, int]]:
-    """Merge several window queries of one chunk into a single half, pooled by
-    *per-window rank* (best rank wins; ties broken by vote count, then id).
+@lru_cache(maxsize=1)
+def _examples_count() -> int:
+    try:
+        return get_attack_examples_collection().count()
+    except Exception:
+        return 0
+
+
+def _use_examples() -> bool:
+    """Examples merge in only when enabled AND the collection was built —
+    a checkout that never ran app.attack.build_examples degrades gracefully
+    to KB-only dense retrieval."""
+    return settings.example_retrieval and _examples_count() > 0
+
+
+def _example_candidates(result: dict, i: int) -> Half:
+    """Like _dense_candidates, but for the procedure-examples collection,
+    whose record ids are "T1489:ex3" — the technique id lives in metadata."""
+    return [
+        (meta["attack_id"], meta, distance)
+        for meta, distance in zip(result["metadatas"][i], result["distances"][i])
+    ]
+
+
+def _merge_by_distance(*hit_lists: Half) -> Half:
+    """Merge candidate lists produced by the SAME query vector against
+    different collections (KB documents, procedure examples). Distances are
+    directly comparable there — same query, same embedding space, cosine to
+    different documents — so unlike cross-half fusion this is a plain
+    best-distance dedupe per technique, not rank arithmetic."""
+    best: dict[str, tuple[str, dict, float | None]] = {}
+    for hits in hit_lists:
+        for attack_id, meta, distance in hits:
+            current = best.get(attack_id)
+            if current is None or (distance or 0.0) < (current[2] or 0.0):
+                best[attack_id] = (attack_id, meta, distance)
+    return sorted(best.values(), key=lambda hit: (hit[2], hit[0]))[:CANDIDATE_POOL]
+
+
+def _pooled_window_candidates(per_window: list[Half]) -> tuple[Half, dict[str, int]]:
+    """Merge one chunk's per-window candidate lists into a single half, pooled
+    by *per-window rank* (best rank wins; ties broken by vote count, then id).
     This is what gives a minority sentence's technique its own undiluted dense
     shot — the chunk-level embedding averages it away. Ranks rather than raw
     distances, because distances aren't comparable across windows: a window
@@ -173,8 +236,8 @@ def _pooled_window_candidates(result: dict, indices: list[int]) -> tuple[Half, d
     best_dist: dict[str, float] = {}
     metas: dict[str, dict] = {}
     seats: dict[str, int] = {}
-    for i in indices:
-        for rank, (attack_id, meta, distance) in enumerate(_dense_candidates(result, i), start=1):
+    for hits in per_window:
+        for rank, (attack_id, meta, distance) in enumerate(hits, start=1):
             if rank <= settings.window_seat_depth:
                 seats[attack_id] = min(rank, seats.get(attack_id, rank))
             if attack_id not in best_rank or rank < best_rank[attack_id]:
@@ -194,21 +257,29 @@ def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
     rank-pooled BM25. A dedicated reranker model over the fused list is still
     open (see CLAUDE.md)."""
     kb = get_attack_collection()
+    examples = get_attack_examples_collection() if _use_examples() else None
     halves: list[Half] = []
     window_seats: dict[str, int] = {}
 
+    def dense_hits(embeddings: list) -> list[Half]:
+        """One merged (KB ∪ examples) candidate list per query embedding."""
+        kb_result = kb.query(query_embeddings=embeddings, n_results=CANDIDATE_POOL)
+        if examples is None:
+            return [_dense_candidates(kb_result, i) for i in range(len(embeddings))]
+        ex_result = examples.query(query_embeddings=embeddings, n_results=CANDIDATE_POOL)
+        return [
+            _merge_by_distance(_dense_candidates(kb_result, i), _example_candidates(ex_result, i))
+            for i in range(len(embeddings))
+        ]
+
     embedding = embed_text(text)
-    result = kb.query(query_embeddings=[embedding], n_results=CANDIDATE_POOL)
-    halves.append(_dense_candidates(result, 0))
+    halves.append(dense_hits([embedding])[0])
 
     if settings.sentence_retrieval:
         windows = build_windows(text)
         if len(windows) > 1:
-            window_result = kb.query(
-                query_embeddings=embed_texts(windows), n_results=CANDIDATE_POOL
-            )
             window_half, window_seats = _pooled_window_candidates(
-                window_result, list(range(len(windows)))
+                dense_hits(embed_texts(windows))
             )
             halves.append(window_half)
         halves.append(bm25_search_sentences(text, CANDIDATE_POOL))
@@ -238,9 +309,24 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
         return {}
     order_to_chunk = {meta["order"]: cid for cid, meta in zip(chunk_ids, chunks["metadatas"])}
 
-    result = get_attack_collection().query(
-        query_embeddings=chunks["embeddings"], n_results=CANDIDATE_POOL
-    )
+    examples = get_attack_examples_collection() if _use_examples() else None
+
+    def dense_hits(embeddings) -> list[Half]:
+        """One merged (KB ∪ procedure-examples) candidate list per query
+        embedding — two batched HNSW queries instead of one when examples
+        are available."""
+        kb_result = get_attack_collection().query(
+            query_embeddings=embeddings, n_results=CANDIDATE_POOL
+        )
+        if examples is None:
+            return [_dense_candidates(kb_result, i) for i in range(len(embeddings))]
+        ex_result = examples.query(query_embeddings=embeddings, n_results=CANDIDATE_POOL)
+        return [
+            _merge_by_distance(_dense_candidates(kb_result, i), _example_candidates(ex_result, i))
+            for i in range(len(embeddings))
+        ]
+
+    chunk_hits = dense_hits(chunks["embeddings"])
 
     # Sentence-window dense half: one batched KB query for every window of the
     # report, grouped back per chunk and max-pooled (plus each chunk's
@@ -256,16 +342,14 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
                 chunk_id = order_to_chunk.get(meta["chunk_order"])
                 if chunk_id is not None:
                     indices_by_chunk.setdefault(chunk_id, []).append(i)
-            window_result = get_attack_collection().query(
-                query_embeddings=windows["embeddings"], n_results=CANDIDATE_POOL
-            )
+            window_hits = dense_hits(windows["embeddings"])
             window_half_by_chunk = {
-                chunk_id: _pooled_window_candidates(window_result, indices)
+                chunk_id: _pooled_window_candidates([window_hits[i] for i in indices])
                 for chunk_id, indices in indices_by_chunk.items()
             }
 
     def halves_for(i: int, chunk_id: str) -> tuple[list[Half], dict[str, int]]:
-        halves = [_dense_candidates(result, i)]
+        halves = [chunk_hits[i]]
         window_seats: dict[str, int] = {}
         if chunk_id in window_half_by_chunk:
             window_half, window_seats = window_half_by_chunk[chunk_id]

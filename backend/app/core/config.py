@@ -7,6 +7,23 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "/data/chroma"
     attack_stix_dir: str = "/data/attack"
     attack_collection: str = "attack_techniques"
+    attack_examples_collection: str = "attack_examples"
+    # Merge ATT&CK procedure-example vectors into the dense retrieval halves
+    # (see app.attack.build_examples). EXPERIMENTAL, off by default: the
+    # examples demonstrably close the vocabulary gap (systematically
+    # unretrievable techniques like T1489 reach window-rank 4-8 once report
+    # phrasing can match "Babuk can stop specific services related to
+    # backups"), but under the current 8-candidate verdict menu the coverage
+    # A/B measured a net LOSS — added example hits displace
+    # previously-reachable techniques from the fused top-8 (Meridian Health
+    # core reachable 18→15; T1059.001/T1547.001/T1570 lost their window
+    # seats), and the two failed variants (concatenating examples into
+    # technique documents; deeper window-seat quotas) are documented in
+    # CLAUDE.md. Kept for the per-candidate-verdicts redesign, where
+    # candidates don't compete for menu slots and this collection plugs
+    # straight in. Retrieval degrades gracefully to KB-only if the collection
+    # was never built.
+    example_retrieval: bool = False
     report_chunks_collection: str = "report_chunks"
     report_windows_collection: str = "report_windows"
     ollama_host: str = "http://ollama:11434"
@@ -76,6 +93,20 @@ class Settings(BaseSettings):
     #   "drop"   — flagged mappings are removed (max precision)
     # Verification errors always fail open (mapping kept unchanged).
     verify_mode: str = "off"
+    # Verdict architecture (EXPERIMENTAL): "menu" = one LLM call per chunk
+    # with all retrieval candidates offered at once (the original design);
+    # "independent" = one small call per candidate ("does the excerpt
+    # evidence THIS technique?"), chunk-first prompts so Ollama's prefix
+    # cache absorbs the repeated chunk text. Rationale: three retrieval
+    # experiments (family expansion, procedure examples, seat tuning) all
+    # died on the same wall — candidates compete for 8 menu slots, and the
+    # 8b's menu verdicts are composition-sensitive (techniques at unchanged
+    # candidate ranks flip 8/8→0/8 when the menu merely grows). Independent
+    # verdicts remove slot competition and menu sensitivity by construction;
+    # the open risk is over-acceptance, gated by the same evidence-quote
+    # validation. More decode per chunk (~1.5-2.5× wall on GPU) — keep
+    # "menu" on CPU-only hosts.
+    verdict_mode: str = "menu"
     cors_origins: list[str] = ["http://localhost:5173"]
 
     class Config:

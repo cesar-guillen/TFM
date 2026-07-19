@@ -37,9 +37,14 @@ class MapOptions(BaseModel):
     # removed) — see settings.verify_mode for the measured trade-offs.
     # None = the VERIFY_MODE default.
     verify_mode: Literal["off", "demote", "drop"] | None = None
+    # Verdict architecture: "menu" (one call per chunk, all candidates at
+    # once) or "independent" (one small call per candidate) — see
+    # settings.verdict_mode for the measured trade-offs. None = the
+    # VERDICT_MODE default.
+    verdict_mode: Literal["menu", "independent"] | None = None
 
 
-def _process(report_id: str, verify: str | None = None) -> None:
+def _process(report_id: str, verify: str | None = None, verdict: str | None = None) -> None:
     """Background stage 6+7 run; mirrors the ingest job pattern (poll via
     GET /reports/{report_id}/map/status) since mapping is minutes-slow on CPU."""
     try:
@@ -84,6 +89,7 @@ def _process(report_id: str, verify: str | None = None) -> None:
             on_progress=on_progress,
             should_abort=lambda: is_cancel_requested(report_id),
             verify=verify,
+            verdict=verdict,
         )
         update_job(report_id, status="aggregating")
         layer = aggregate_mappings(mappings)
@@ -138,7 +144,12 @@ def start_mapping(
         return {"report_id": report_id, "status": existing.status}
 
     create_job(report_id)
-    background_tasks.add_task(_process, report_id, options.verify_mode if options else None)
+    background_tasks.add_task(
+        _process,
+        report_id,
+        options.verify_mode if options else None,
+        options.verdict_mode if options else None,
+    )
     return {"report_id": report_id, "status": "retrieving"}
 
 

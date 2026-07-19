@@ -344,6 +344,66 @@ def _verify_mapping(
     return True
 
 
+# Per-candidate ("independent") verdict mode — see settings.verdict_mode.
+# Shares the menu prompt's validated rules (conservative, actor-centric,
+# mechanism-precision, inline-citation, confidence rubric) minus the
+# menu-specific selection language.
+INDEPENDENT_SYSTEM_PROMPT = (
+    "You are a cybersecurity analyst checking whether an excerpt of a "
+    "security report gives concrete evidence of one specific MITRE ATT&CK "
+    "technique. The technique applies when the excerpt reports the attacker "
+    "actually performing the activity the technique describes — a concrete "
+    "action, tool use, or observed artifact. Missing a technique the excerpt "
+    "genuinely shows is as wrong as claiming one it does not; judge on the "
+    "excerpt's content, not on caution. Judge every statement by who acts: "
+    "the same activity is evidence only when the adversary did it, and is "
+    "NOT evidence when it describes defenders or the victim organization "
+    "detecting, investigating, responding, or advising. Activity that is "
+    "merely plausible, thematically related, or belongs to a different "
+    "technique does not apply — a scheduled task is not a system service, "
+    "and evidence for a sibling technique is not evidence for this one. If "
+    "the excerpt explicitly cites this technique's ATT&CK id (e.g. "
+    "\"[T1573]\") next to described adversary activity, that citation is "
+    "concrete evidence, even when brief. When the technique applies, give a "
+    "confidence score from 0 to 100 reflecting how directly the excerpt "
+    "shows the activity, a one-sentence reason, and quote the shortest "
+    "phrase (at most ~12 words) that evidences it — copied verbatim from "
+    "the excerpt itself, never from the technique description. When it does "
+    "not apply, return applies=false and nothing else."
+)
+
+# "applies" is the only required field so a false verdict can stop decoding
+# immediately instead of filling reason/evidence with filler tokens; a true
+# verdict missing its evidence is dropped by the standard validation gates.
+_INDEPENDENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "applies": {"type": "boolean"},
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        "reason": {"type": "string", "maxLength": 300},
+        "evidence": {"type": "string", "maxLength": 240},
+    },
+    "required": ["applies"],
+}
+
+
+def _independent_prompt(chunk_text: str, candidate: TechniqueMatch, description: str) -> str:
+    """Chunk first, candidate last: every candidate of a chunk then shares a
+    long identical prefix (system prompt + excerpt), which Ollama's per-slot
+    prefix cache serves without recomputation (measured: 1328ms cold vs 43ms
+    cached prefill) — the whole reason per-candidate calls are affordable."""
+    return (
+        "Report excerpt:\n"
+        "---\n"
+        f"{chunk_text}\n"
+        "---\n\n"
+        "Candidate ATT&CK technique:\n"
+        f"{candidate.attack_id} ({candidate.name}): {description}\n\n"
+        "Does the excerpt give concrete evidence of the attacker using this "
+        "specific technique?"
+    )
+
+
 def _chunk_prompt(chunk_text: str, candidates: list[TechniqueMatch], descriptions: dict[str, str]) -> str:
     return (
         "Report excerpt:\n"
@@ -365,14 +425,19 @@ def map_report(
     on_progress: ProgressCallback | None = None,
     should_abort: AbortCheck | None = None,
     verify: str | None = None,
+    verdict: str | None = None,
 ) -> list[ChunkMapping]:
-    """Run stage 6 for one indexed report: hybrid candidates per chunk, one LLM
-    verdict per chunk, validated and flattened into ChunkMappings. `verify`
-    picks this run's verification mode — "off" | "demote" | "drop" (None =
-    settings.verify_mode)."""
+    """Run stage 6 for one indexed report: hybrid candidates per chunk, LLM
+    verdicts, validated and flattened into ChunkMappings. `verify` picks this
+    run's verification mode — "off" | "demote" | "drop"; `verdict` picks the
+    verdict architecture — "menu" | "independent" (None = settings defaults
+    for both)."""
     verify_run = settings.verify_mode if verify is None else verify
     if verify_run not in VERIFY_MODES:
         raise ValueError(f"verify must be one of {VERIFY_MODES}, got {verify_run!r}")
+    verdict_run = settings.verdict_mode if verdict is None else verdict
+    if verdict_run not in ("menu", "independent"):
+        raise ValueError(f"verdict must be 'menu' or 'independent', got {verdict_run!r}")
     candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=settings.map_candidates)
     if not candidates_by_chunk:
         return []
@@ -388,11 +453,30 @@ def map_report(
     kb = get_attack_collection().get(ids=all_ids, include=["documents"])
     descriptions = {i: _trim_description(d) for i, d in zip(kb["ids"], kb["documents"])}
 
-    def map_one(chunk_id: str, client: httpx.Client) -> list[ChunkMapping]:
-        # Checked as each queued chunk's turn comes up, so a cancel takes
-        # effect within one verdict's latency instead of after the whole queue.
-        if should_abort and should_abort():
-            raise MappingAborted()
+    def accept(chunk_id: str, tid: str, name: str, m: dict) -> ChunkMapping | None:
+        """Shared validation gates for a raw model verdict (either mode):
+        evidence-quote grounding, no-evidence confession, confidence floor."""
+        if not _evidence_in_chunk(m.get("evidence") or "", chunk_text[chunk_id]):
+            return None  # fabricated/paraphrased "quote" — not grounded, drop it
+        if NO_EVIDENCE_RE.search(m.get("reason") or ""):
+            return None  # the model itself concedes the evidence isn't there
+        confidence = m.get("confidence")
+        if not isinstance(confidence, (int, float)):
+            confidence = SALVAGED_CONFIDENCE  # salvaged/truncated verdicts may lack it
+        confidence = max(0, min(100, int(confidence)))
+        if confidence < MIN_CONFIDENCE:
+            return None  # the model itself rates this a non-mapping
+        return ChunkMapping(
+            chunk_id=chunk_id,
+            heading_path=chunk_meta[chunk_id].get("heading_path", ""),
+            technique_id=tid,
+            technique_name=name,
+            confidence=confidence,
+            evidence=(m.get("evidence") or "").strip()[:300],
+            reason=(m.get("reason") or "").strip()[:250],
+        )
+
+    def map_one_menu(chunk_id: str, client: httpx.Client) -> list[ChunkMapping]:
         candidates = candidates_by_chunk[chunk_id]
         by_id = {m.attack_id: m for m in candidates}
         result = chat_json(
@@ -406,28 +490,43 @@ def map_report(
             tid = m.get("technique_id")
             if tid not in by_id:  # schema enum should prevent this; drop if not
                 continue
-            if not _evidence_in_chunk(m.get("evidence") or "", chunk_text[chunk_id]):
-                continue  # fabricated/paraphrased "quote" — not grounded, drop it
-            if NO_EVIDENCE_RE.search(m.get("reason") or ""):
-                continue  # the model itself concedes the evidence isn't there
-            confidence = m.get("confidence")
-            if not isinstance(confidence, (int, float)):
-                confidence = SALVAGED_CONFIDENCE  # salvaged/truncated verdicts may lack it
-            confidence = max(0, min(100, int(confidence)))
-            if confidence < MIN_CONFIDENCE:
-                continue  # the model itself rates this a non-mapping
-            accepted.append(
-                ChunkMapping(
-                    chunk_id=chunk_id,
-                    heading_path=chunk_meta[chunk_id].get("heading_path", ""),
-                    technique_id=tid,
-                    technique_name=by_id[tid].name,
-                    confidence=confidence,
-                    evidence=(m.get("evidence") or "").strip()[:300],
-                    reason=(m.get("reason") or "").strip()[:250],
-                )
-            )
+            mapping = accept(chunk_id, tid, by_id[tid].name, m)
+            if mapping is not None:
+                accepted.append(mapping)
         return accepted
+
+    def map_one_independent(chunk_id: str, client: httpx.Client) -> list[ChunkMapping]:
+        # One small call per candidate, issued sequentially from this thread so
+        # the chunk-first prompt keeps one Ollama slot's prefix cache warm
+        # (parallelism stays at the chunk level, as in menu mode). No enum
+        # constraint is needed — the candidate IS the technique id.
+        accepted: list[ChunkMapping] = []
+        for candidate in candidates_by_chunk[chunk_id]:
+            if should_abort and should_abort():
+                raise MappingAborted()
+            result = chat_json(
+                _independent_prompt(
+                    chunk_text[chunk_id], candidate, descriptions.get(candidate.attack_id, "")
+                ),
+                _INDEPENDENT_SCHEMA,
+                client=client,
+                system=INDEPENDENT_SYSTEM_PROMPT,
+            )
+            if not result.get("applies"):
+                continue
+            mapping = accept(chunk_id, candidate.attack_id, candidate.name, result)
+            if mapping is not None:
+                accepted.append(mapping)
+        return accepted
+
+    def map_one(chunk_id: str, client: httpx.Client) -> list[ChunkMapping]:
+        # Checked as each queued chunk's turn comes up, so a cancel takes
+        # effect within one verdict's latency instead of after the whole queue.
+        if should_abort and should_abort():
+            raise MappingAborted()
+        if verdict_run == "independent":
+            return map_one_independent(chunk_id, client)
+        return map_one_menu(chunk_id, client)
 
     # Chunks resolve concurrently (map_workers must not exceed the ollama
     # service's OLLAMA_NUM_PARALLEL or requests just queue server-side).

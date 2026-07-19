@@ -45,6 +45,18 @@ def get_report_chunks_collection() -> chromadb.Collection:
     )
 
 
+def get_attack_examples_collection() -> chromadb.Collection:
+    """ATT&CK procedure-example vectors (see app.attack.build_examples): each
+    example is its own embedding carrying its technique's full metadata, so at
+    query time example hits merge into the dense halves by distance and vote
+    for their technique. Kept separate from attack_techniques on purpose —
+    concatenating examples into the technique documents measurably diluted
+    their embeddings and regressed retrieval coverage."""
+    return get_chroma_client().get_or_create_collection(
+        settings.attack_examples_collection, metadata=COSINE_SPACE
+    )
+
+
 def get_report_windows_collection() -> chromadb.Collection:
     """Sentence windows of ingested report chunks (see app.ingest.sentences),
     embedded at index time for the sub-chunk dense retrieval half. Like

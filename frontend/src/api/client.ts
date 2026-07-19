@@ -68,9 +68,17 @@ export interface MappingStatus {
  * marked comment, "drop" = remove it. */
 export type VerifyMode = "off" | "demote" | "drop";
 
+/** Verdict architecture: "menu" judges all candidate techniques of a chunk in
+ * one LLM call; "independent" asks one small question per candidate — better
+ * recall and reproducible runs, can raise false positives on some reports,
+ * ~1.5× slower. */
+export type VerdictMode = "menu" | "independent";
+
 export interface MapOptions {
   /** Verification mode for this run. Omit for the server default. */
   verify_mode?: VerifyMode;
+  /** Verdict architecture for this run. Omit for the server default. */
+  verdict_mode?: VerdictMode;
 }
 
 export async function startMapping(
