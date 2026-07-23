@@ -73,6 +73,8 @@ then run `wsl --shutdown` from Windows and restart Docker.
 
 Both CPU profiles automatically pin inference to **all CPU threads except two** (computed at container start, whatever the core count), so the machine stays responsive while a report is being mapped.
 
+**Apple Silicon (M-series) Macs / ARM64**: the whole stack runs natively on `linux/arm64` — the frontend lockfile ships every platform's native binaries (esbuild/Rollup), and every backend dependency and the `ollama/ollama` image have arm64 builds, so no source compilation is needed. Use the **No GPU** profile (`docker-compose.cpu.yml`, or `docker-compose.basic.yml` on ≤8 GB): the GPU override is NVIDIA-only, and a Mac's Metal GPU isn't reachable from inside a Docker container anyway, so inference runs on CPU. (Docker Desktop on a Mac builds and runs arm64 containers by default — don't force `platform: linux/amd64`, which would run everything under slow x86 emulation.)
+
 Tip: to make your profile stick so plain `docker compose up` / `docker compose down` uses it, add a line to `.env`, e.g. `COMPOSE_FILE=docker-compose.yml:docker-compose.cpu.yml`.
 
 (Every other setting has a working default baked into `docker-compose.yml`; create a `.env` only to override them — ports, model names, `MAP_WORKERS`/`OLLAMA_NUM_PARALLEL` parallelism. Values set in `.env` win over profile defaults.)
