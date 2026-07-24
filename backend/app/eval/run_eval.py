@@ -61,6 +61,10 @@ def main() -> None:
     parser.add_argument("--report-id")
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--top-k", type=int, default=settings.map_candidates)
+    parser.add_argument("--verify", choices=["off", "demote", "drop"], default=None,
+                        help="verification-pass mode (default: settings.verify_mode)")
+    parser.add_argument("--report-type", choices=["incident", "pentest"], default=None,
+                        help="prompt family (default: settings.report_type)")
     args = parser.parse_args()
 
     gt = REPORTS[args.report]
@@ -81,12 +85,15 @@ def main() -> None:
         f"Report: {gt.name}\n"
         f"Config: model={settings.ollama_model}  top_k={args.top_k}  "
         f"sentence_retrieval={settings.sentence_retrieval}  runs={args.runs}\n"
+        f"        report_type={args.report_type or settings.report_type}  "
+        f"verify={args.verify or settings.verify_mode}\n"
         f"Ground truth: {len(core)} core + {len(acceptable)} acceptable techniques\n"
     )
 
     res = run_eval(
         report_id, runs=args.runs, top_k=args.top_k,
         core=core, acceptable=acceptable, chunk_count=chunk_count,
+        verify=args.verify, report_type=args.report_type,
     )
 
     print("=" * 72)

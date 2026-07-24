@@ -12,7 +12,7 @@ The whole pipeline works end-to-end:
 
 - **Ingest**: upload a PDF → Markdown conversion (`pymupdf4llm`) → section-aware chunking with role filtering (remediation/boilerplate sections excluded) → embedding into a local Chroma store, with live progress in the UI.
 - **Retrieval**: hybrid dense + BM25 search over the bundled ATT&CK v19.1 knowledge base (~700 techniques, pre-embedded seed ships in the repo), fused by reciprocal rank fusion.
-- **Mapping**: a local LLM (via Ollama) judges which candidate techniques each chunk actually evidences — schema-constrained output, verbatim evidence quotes checked against the source text — then results are aggregated into a Navigator-style layer with per-technique evidence comments.
+- **Mapping**: a local LLM (via Ollama) judges which candidate techniques each chunk actually evidences — schema-constrained output, verbatim evidence quotes checked against the source text — then results are aggregated into a Navigator-style layer with per-technique evidence comments (strongest evidence first). Supports both **incident reports** (maps the attacker's observed actions) and **pentest / red-team reports** (maps the testers' performed actions; findings merely noted but not exploited are excluded) — chosen per upload in the options dialog, along with false-positive filtering and the technique-judging mode.
 - **UI**: a matrix library dashboard (open/edit/delete previously computed matrices, upload new reports), a live-updating matrix preview during runs, and a full Navigator-style editor with scoring, sorting, JSON/SVG export, and save-to-library.
 
 Not implemented yet: the chat interface (`/api/chat` is a stub) and a reranker over the fused retrieval candidates.

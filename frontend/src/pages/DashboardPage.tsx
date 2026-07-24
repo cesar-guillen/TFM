@@ -7,6 +7,7 @@ import {
   getMatrixHistory,
   startMapping,
   type IngestStarted,
+  type ReportType,
   type SavedMatrixSummary,
   type VerdictMode,
   type VerifyMode,
@@ -65,6 +66,16 @@ export default function DashboardPage() {
     setVerdictMode(value);
     localStorage.setItem("tfm-verdict-mode", value);
   }
+  // Report kind (incident vs pentest), same ownership pattern — picked in the
+  // upload dialog, applied when the mapping run starts. Persisting the last
+  // choice also covers a resumed session's auto-started mapping.
+  const [reportType, setReportType] = useState<ReportType>(() =>
+    localStorage.getItem("tfm-report-type") === "pentest" ? "pentest" : "incident",
+  );
+  function handleReportTypeChange(value: ReportType) {
+    setReportType(value);
+    localStorage.setItem("tfm-report-type", value);
+  }
   const [mappingReportId, setMappingReportId] = useState<string | null>(
     persistedRun?.mappingStarted ? persistedRun.reportId : null,
   );
@@ -117,7 +128,11 @@ export default function DashboardPage() {
     if (!started) return;
     setStartingMap(true);
     try {
-      await startMapping(started.report_id, { verify_mode: verifyMode, verdict_mode: verdictMode });
+      await startMapping(started.report_id, {
+        verify_mode: verifyMode,
+        verdict_mode: verdictMode,
+        report_type: reportType,
+      });
       setMappingReportId(started.report_id);
       // Record that mapping is underway, so a reload resumes the map job
       // directly instead of re-triggering the auto-start.
@@ -275,6 +290,8 @@ export default function DashboardPage() {
             onVerifyModeChange={handleVerifyModeChange}
             verdictMode={verdictMode}
             onVerdictModeChange={handleVerdictModeChange}
+            reportType={reportType}
+            onReportTypeChange={handleReportTypeChange}
           />
         </section>
 

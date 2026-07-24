@@ -6,9 +6,12 @@ matrix cell itself carries the full traceability chain. The score is the
 model's own 0-100 confidence (see mapper.ChunkMapping); 0 is reserved for
 "not mapped"."""
 
+import re
 from collections import defaultdict
 
 from app.mapping.mapper import ChunkMapping
+
+_QUOTE_TOKENS = re.compile(r"[a-z0-9]+")
 
 # A parent technique that wasn't mapped itself but has mapped sub-techniques
 # gets a synthetic entry (the matrix collapses sub-techniques by default, so
@@ -16,6 +19,15 @@ from app.mapping.mapper import ChunkMapping
 # entirely) scored as the *average* of its subs' scores — the parent reflects
 # the family's overall evidence strength, and can never outrank its own best
 # sub (relevant in demote mode, where flagged subs are capped low).
+
+
+def _norm_quote(evidence: str) -> str:
+    """Alphanumeric-token key for collapsing the same quote captured by
+    overlapping chunks. Punctuation and case are dropped, not just whitespace:
+    a chunk boundary often includes/excludes a trailing period or capital, so
+    "…svc-sql account" and "…svc-sql account." are the same evidence and must
+    dedup to one line."""
+    return " ".join(_QUOTE_TOKENS.findall(evidence.lower()))
 
 
 def _evidence_line(m: ChunkMapping) -> str:
@@ -35,7 +47,24 @@ def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19")
     techniques = []
     for technique_id, hits in sorted(by_technique.items()):
         best = max(h.confidence for h in hits)
-        comment = "\n".join(_evidence_line(h) for h in hits)
+        # Strongest evidence first, so the top comment line is always the one
+        # that justifies the cell's score (in report order a technique mapped
+        # by a strong chunk could otherwise lead with a weaker/misattributed
+        # instance — "right technique, wrong comment"). Deduped by evidence
+        # quote, not full line: overlapping chunks capture the same sentence
+        # with slightly different reasons, which stacked as near-duplicate
+        # lines. One clean line per distinct quote, no score-tag prefix (the
+        # cell already shows the score). Stable sort keeps report order within
+        # equal confidences.
+        deduped: list[ChunkMapping] = []
+        seen: set[str] = set()
+        for h in sorted(hits, key=lambda h: -h.confidence):
+            key = _norm_quote(h.evidence)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(h)
+        comment = "\n".join(_evidence_line(h) for h in deduped)
         techniques.append(
             {
                 "techniqueID": technique_id,

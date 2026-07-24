@@ -42,9 +42,18 @@ class MapOptions(BaseModel):
     # settings.verdict_mode for the measured trade-offs. None = the
     # VERDICT_MODE default.
     verdict_mode: Literal["menu", "independent"] | None = None
+    # Prompt family: "incident" (the intruder is the adversary) or "pentest"
+    # (the testers play the adversary; un-exploited findings aren't evidence).
+    # None = the REPORT_TYPE default.
+    report_type: Literal["incident", "pentest"] | None = None
 
 
-def _process(report_id: str, verify: str | None = None, verdict: str | None = None) -> None:
+def _process(
+    report_id: str,
+    verify: str | None = None,
+    verdict: str | None = None,
+    report_type: str | None = None,
+) -> None:
     """Background stage 6+7 run; mirrors the ingest job pattern (poll via
     GET /reports/{report_id}/map/status) since mapping is minutes-slow on CPU."""
     try:
@@ -90,6 +99,7 @@ def _process(report_id: str, verify: str | None = None, verdict: str | None = No
             should_abort=lambda: is_cancel_requested(report_id),
             verify=verify,
             verdict=verdict,
+            report_type=report_type,
         )
         update_job(report_id, status="aggregating")
         layer = aggregate_mappings(mappings)
@@ -149,6 +159,7 @@ def start_mapping(
         report_id,
         options.verify_mode if options else None,
         options.verdict_mode if options else None,
+        options.report_type if options else None,
     )
     return {"report_id": report_id, "status": "retrieving"}
 

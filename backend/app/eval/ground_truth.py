@@ -191,6 +191,60 @@ _HEALTH_ACCEPTABLE: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Acme Retail Group pentest (`sample_pentest.pdf`) — a fictional external+
+# internal network penetration test escalating a simulated phishing foothold to
+# full AD domain compromise. Labels supplied by the user (2026-07-24) from the
+# report's own findings; the demonstrably-executed backbone is CORE, recon /
+# secondary / not-exploited-but-listed / tooling reads are ACCEPTABLE. NB the
+# report cites T1562.002 for F-13, which is RETIRED in v19.1 — its equivalent,
+# T1685.001 "Disable or Modify Windows Event Log", is used here (the enum-
+# constrained mapper cannot emit the old id). "T1049" is the user's id for the
+# network-enumeration finding (F-07).
+# ---------------------------------------------------------------------------
+
+_PENTEST_CORE: dict[str, str] = {
+    "T1558.003": "F-01 Kerberoasting — requested TGS tickets, recovered svc-sql password",
+    "T1078.002": "F-02/F-03/F-05 valid domain accounts used (svc-sql, DA, VPN creds)",
+    "T1550.003": "F-02 pass-the-ticket — extracted cached TGT, reused to impersonate DA",
+    "T1110.003": "F-03 password spraying against the external VPN portal",
+    "T1557.001": "F-04/F-08 LLMNR/NBT-NS poisoning + SMB relay",
+    "T1210": "F-04 exploitation of remote services (relay -> code execution)",
+    "T1133": "F-05 external remote services (VPN session established)",
+    "T1021.002": "F-07 reached/enumerated server-tier hosts over SMB (lateral)",
+    "T1069.002": "internal AD permission-group enumeration (BloodHound/SharpHound)",
+    "T1482": "domain trust discovery during internal AD mapping",
+    "T1592.002": "F-09/F-11 software fingerprinting via verbose banners/error pages",
+    "T1190": "F-06 unpatched public-facing RCE (validated, not exploited — user labels it core)",
+}
+
+_PENTEST_ACCEPTABLE: dict[str, str] = {
+    # Reconnaissance phase (soft/hard-to-retrieve; user listed all)
+    "T1591": "Recon: gather victim org info (OSINT)",
+    "T1591.001": "Recon: determine physical locations",
+    "T1589": "Recon: gather victim identity info (employee names for spraying)",
+    "T1593": "Recon: search open websites/domains",
+    "T1595": "Recon: active scanning (service enumeration)",
+    "T1595.001": "Recon: scanning IP blocks (4 public ranges)",
+    "T1590": "Recon: gather victim network info",
+    "T1592": "parent — gather victim host info",
+    # Initial access / other
+    "T1566": "simulated spear-phishing foothold (test harness)",
+    "T1189": "F-10 missing security headers (drive-by class, not exploited)",
+    "T1552": "unsecured credentials (weak/reused service-account passwords)",
+    "T1049": "F-07 network connection/host enumeration from the foothold",
+    "T1685.001": "F-13 disable/modify Windows event log (v19.1 id for the cited T1562.002; a defender-gap read)",
+    "T1039": "post-exploitation access to representative network shares (demo, no exfil)",
+    # Parents auto-emitted by promotion
+    "T1558": "parent — steal/forge Kerberos tickets (also F-02 delegation)",
+    "T1550": "parent — use alternate authentication material",
+    "T1110": "parent — brute force",
+    "T1078": "parent — valid accounts",
+    "T1557": "parent — adversary-in-the-middle",
+    "T1021": "parent — remote services",
+}
+
+
 REPORTS: dict[str, ReportGroundTruth] = {
     "meridian-grove": ReportGroundTruth(
         name="Meridian Grove",
@@ -203,6 +257,12 @@ REPORTS: dict[str, ReportGroundTruth] = {
         pdf_glob="/data/uploads/*Meridian_Health_Partners_Incident_Report.pdf",
         core=_HEALTH_CORE,
         acceptable=_HEALTH_ACCEPTABLE,
+    ),
+    "acme-pentest": ReportGroundTruth(
+        name="Acme Retail Group Pentest",
+        pdf_glob="/data/uploads/*sample_pentest.pdf",
+        core=_PENTEST_CORE,
+        acceptable=_PENTEST_ACCEPTABLE,
     ),
 }
 

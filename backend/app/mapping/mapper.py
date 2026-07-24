@@ -30,6 +30,17 @@ from app.retrieval.retrieve import TechniqueMatch, search_techniques_for_report
 # so the CPU compose profiles run leaner values than the full-quality
 # defaults (see app.core.config).
 
+# Confidence wording shared by the two menu-mode prompts (incident + pentest).
+# An anchored "spread the scores 60-100" rubric was tried 2026-07-24 and
+# REVERTED: it worked (median 90→80) but cost recall on Meridian Health (exact
+# 14.0→12.2/24, N=5 A/B) — the user judged the accuracy loss not worth the
+# heat-scale variety, so this is the original, recall-preserving wording.
+_CONFIDENCE_LINE = (
+    "Give each mapping a confidence score from 0 to "
+    "100 reflecting how directly the excerpt shows the activity — higher when "
+    "it is explicitly described, lower when only weakly but genuinely indicated"
+)
+
 SYSTEM_PROMPT = (
     "You are a cybersecurity analyst mapping excerpts of a security report to "
     "MITRE ATT&CK techniques. Be conservative: map a candidate technique only "
@@ -51,10 +62,44 @@ SYSTEM_PROMPT = (
     "explicitly cites an ATT&CK "
     "technique id (e.g. \"[T1573]\") next to described adversary activity, "
     "that citation is concrete evidence for the matching candidate, even "
-    "when the mention is brief. Give each mapping a confidence score from 0 to "
-    "100 reflecting how directly the excerpt shows the activity — higher when "
-    "it is explicitly described, lower when only weakly but genuinely indicated"
+    "when the mention is brief. " + _CONFIDENCE_LINE
 )
+
+# Pentest/red-team variant (report_type="pentest" on POST /reports/{id}/map):
+# the same validated rules — conservative, candidate-independence, mechanism
+# precision, inline-citation evidence, shared confidence rubric — with the
+# actor-centric rule recast for assessments: the *testers* play the adversary
+# (typically narrating in the first person), and un-exploited findings are
+# the pentest analogue of the incident prompt's defender-activity exclusion
+# (a report saying a host is *vulnerable* to something does not evidence the
+# technique being used).
+PENTEST_SYSTEM_PROMPT = (
+    "You are a cybersecurity analyst mapping excerpts of a penetration-test "
+    "or red-team report to MITRE ATT&CK techniques. The testers play the "
+    "adversary. Be conservative: map a candidate technique only when the "
+    "excerpt reports the testers actually performing the activity the "
+    "technique describes — a concrete action, tool use, or demonstrated "
+    "result, whether narrated in the first person (\"we\", \"the "
+    "consultant\", \"the assessment team\") or attributed to the testers. "
+    "Vulnerabilities that were only identified or scanned, and attacks "
+    "described as possible but not carried out, are NOT evidence — only "
+    "what was actually executed or exploited counts. Activity by the "
+    "client's staff or defenders, and remediation, hardening, or "
+    "recommendation text, is NOT evidence either. Do not map techniques "
+    "that are merely plausible or thematically related. Consider each "
+    "candidate independently: an excerpt often evidences several distinct "
+    "techniques at once, so map every candidate the excerpt genuinely "
+    "supports, not only the most prominent one. When the excerpt names the "
+    "specific mechanism a sub-technique describes (a named protocol like "
+    "SSH or RDP, a named file like /etc/shadow, a named tool or method), "
+    "map that precise sub-technique, not just its general parent. If the "
+    "excerpt explicitly cites an ATT&CK technique id (e.g. \"[T1059.001]\") "
+    "next to described tester activity, that citation is concrete evidence "
+    "for the matching candidate, even when the mention is brief. "
+    + _CONFIDENCE_LINE
+)
+
+REPORT_TYPES = ("incident", "pentest")
 
 # Called as (chunks_mapped, chunk_count, mappings_so_far) after each chunk
 # resolves; mappings_so_far is a report-ordered snapshot of every accepted
@@ -266,6 +311,25 @@ VERIFY_SYSTEM_PROMPT = (
     "the broader Remote Services technique in use."
 )
 
+# Pentest variant of the judge: same specificity rules, actor recast to the
+# testers, and "identified but not exploited" joins the answer-no list (the
+# pentest analogue of defender activity).
+PENTEST_VERIFY_SYSTEM_PROMPT = (
+    "You audit proposed MITRE ATT&CK technique mappings from a "
+    "penetration-test or red-team report, where the testers play the "
+    "adversary. Judge whether the report passage shows the testers using "
+    "the specific mechanism the technique describes — not merely a related "
+    "topic, the same tactic, or activity that belongs to a different "
+    "technique (a scheduled task is not a system service; abusing a SUID "
+    "binary is not modifying an authentication process). Also answer no "
+    "when the passage only identifies a vulnerability without it being "
+    "exploited, or describes the client's staff or defenders acting rather "
+    "than the testers. Terse but on-point evidence still counts as yes, and "
+    "so does evidence naming a specific mechanism, protocol, or tool the "
+    "technique or one of its sub-techniques covers — 'Remote Desktop "
+    "Protocol' shows the broader Remote Services technique in use."
+)
+
 _VERIFY_SCHEMA = {
     "type": "object",
     "properties": {"verdict": {"type": "string", "enum": ["yes", "no"]}},
@@ -307,7 +371,9 @@ def _evidence_context(evidence: str, chunk: str, radius: int = 220) -> str:
     return snippet
 
 
-def _verify_prompt(mapping: "ChunkMapping", description: str, context: str) -> str:
+def _verify_prompt(
+    mapping: "ChunkMapping", description: str, context: str, actor: str
+) -> str:
     return (
         f"Proposed technique: {mapping.technique_id} ({mapping.technique_name}): "
         f"{description}\n\n"
@@ -317,21 +383,26 @@ def _verify_prompt(mapping: "ChunkMapping", description: str, context: str) -> s
         "---\n"
         f'Quoted evidence: "{mapping.evidence}"\n'
         f"Proposed rationale: {mapping.reason}\n\n"
-        "Does the passage show the attacker using this specific technique?"
+        f"Does the passage show {actor} using this specific technique?"
     )
 
 
 def _verify_mapping(
-    mapping: "ChunkMapping", description: str, chunk: str, client: httpx.Client
+    mapping: "ChunkMapping",
+    description: str,
+    chunk: str,
+    client: httpx.Client,
+    system: str = VERIFY_SYSTEM_PROMPT,
+    actor: str = "the attacker",
 ) -> bool:
     """One tiny constrained yes/no call; errors fail open (mapping kept) so a
     transient Ollama hiccup can't silently eat true mappings."""
     try:
         result = chat_json(
-            _verify_prompt(mapping, description, _evidence_context(mapping.evidence, chunk)),
+            _verify_prompt(mapping, description, _evidence_context(mapping.evidence, chunk), actor),
             _VERIFY_SCHEMA,
             client=client,
-            system=VERIFY_SYSTEM_PROMPT,
+            system=system,
         )
     except Exception:
         logger.warning("verification call failed for %s; keeping mapping", mapping.technique_id)
@@ -364,6 +435,34 @@ INDEPENDENT_SYSTEM_PROMPT = (
     "and evidence for a sibling technique is not evidence for this one. If "
     "the excerpt explicitly cites this technique's ATT&CK id (e.g. "
     "\"[T1573]\") next to described adversary activity, that citation is "
+    "concrete evidence, even when brief. When the technique applies, give a "
+    "confidence score from 0 to 100 reflecting how directly the excerpt "
+    "shows the activity, a one-sentence reason, and quote the shortest "
+    "phrase (at most ~12 words) that evidences it — copied verbatim from "
+    "the excerpt itself, never from the technique description. When it does "
+    "not apply, return applies=false and nothing else."
+)
+
+# Pentest variant of the independent-mode prompt — same actor recast as
+# PENTEST_SYSTEM_PROMPT.
+PENTEST_INDEPENDENT_SYSTEM_PROMPT = (
+    "You are a cybersecurity analyst checking whether an excerpt of a "
+    "penetration-test or red-team report gives concrete evidence of one "
+    "specific MITRE ATT&CK technique. The testers play the adversary: the "
+    "technique applies when the excerpt reports the testers actually "
+    "performing the activity it describes — a concrete action, tool use, or "
+    "demonstrated result, whether narrated in the first person (\"we\", "
+    "\"the consultant\") or attributed to the testers. Missing a technique "
+    "the excerpt genuinely shows is as wrong as claiming one it does not; "
+    "judge on the excerpt's content, not on caution. Vulnerabilities that "
+    "were only identified or scanned, attacks described as possible but not "
+    "carried out, activity by the client's staff or defenders, and "
+    "remediation or recommendation text are NOT evidence. Activity that is "
+    "merely plausible, thematically related, or belongs to a different "
+    "technique does not apply — a scheduled task is not a system service, "
+    "and evidence for a sibling technique is not evidence for this one. If "
+    "the excerpt explicitly cites this technique's ATT&CK id (e.g. "
+    "\"[T1059.001]\") next to described tester activity, that citation is "
     "concrete evidence, even when brief. When the technique applies, give a "
     "confidence score from 0 to 100 reflecting how directly the excerpt "
     "shows the activity, a one-sentence reason, and quote the shortest "
@@ -426,18 +525,33 @@ def map_report(
     should_abort: AbortCheck | None = None,
     verify: str | None = None,
     verdict: str | None = None,
+    report_type: str | None = None,
 ) -> list[ChunkMapping]:
     """Run stage 6 for one indexed report: hybrid candidates per chunk, LLM
     verdicts, validated and flattened into ChunkMappings. `verify` picks this
     run's verification mode — "off" | "demote" | "drop"; `verdict` picks the
-    verdict architecture — "menu" | "independent" (None = settings defaults
-    for both)."""
+    verdict architecture — "menu" | "independent"; `report_type` picks the
+    prompt family — "incident" | "pentest" (None = settings defaults for
+    all three)."""
     verify_run = settings.verify_mode if verify is None else verify
     if verify_run not in VERIFY_MODES:
         raise ValueError(f"verify must be one of {VERIFY_MODES}, got {verify_run!r}")
     verdict_run = settings.verdict_mode if verdict is None else verdict
     if verdict_run not in ("menu", "independent"):
         raise ValueError(f"verdict must be 'menu' or 'independent', got {verdict_run!r}")
+    report_type_run = settings.report_type if report_type is None else report_type
+    if report_type_run not in REPORT_TYPES:
+        raise ValueError(f"report_type must be one of {REPORT_TYPES}, got {report_type_run!r}")
+    # One prompt family per run: the pentest variants recast the actor-centric
+    # rule (the testers play the adversary; un-exploited findings aren't
+    # evidence) — everything downstream of the prompts is identical.
+    pentest = report_type_run == "pentest"
+    menu_system = PENTEST_SYSTEM_PROMPT if pentest else SYSTEM_PROMPT
+    independent_system = (
+        PENTEST_INDEPENDENT_SYSTEM_PROMPT if pentest else INDEPENDENT_SYSTEM_PROMPT
+    )
+    verify_system = PENTEST_VERIFY_SYSTEM_PROMPT if pentest else VERIFY_SYSTEM_PROMPT
+    verify_actor = "the testers" if pentest else "the attacker"
     candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=settings.map_candidates)
     if not candidates_by_chunk:
         return []
@@ -483,7 +597,7 @@ def map_report(
             _chunk_prompt(chunk_text[chunk_id], candidates, descriptions),
             _response_schema(list(by_id)),
             client=client,
-            system=SYSTEM_PROMPT,
+            system=menu_system,
         )
         accepted: list[ChunkMapping] = []
         for m in result.get("mappings", []):
@@ -510,7 +624,7 @@ def map_report(
                 ),
                 _INDEPENDENT_SCHEMA,
                 client=client,
-                system=INDEPENDENT_SYSTEM_PROMPT,
+                system=independent_system,
             )
             if not result.get("applies"):
                 continue
@@ -584,7 +698,12 @@ def map_report(
 
             def verify_one(m: ChunkMapping) -> ChunkMapping | None:
                 if _verify_mapping(
-                    m, descriptions.get(m.technique_id, ""), chunk_text[m.chunk_id], client
+                    m,
+                    descriptions.get(m.technique_id, ""),
+                    chunk_text[m.chunk_id],
+                    client,
+                    system=verify_system,
+                    actor=verify_actor,
                 ):
                     return m
                 if verify_run == "demote":

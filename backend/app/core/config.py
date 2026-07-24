@@ -107,6 +107,14 @@ class Settings(BaseSettings):
     # validation. More decode per chunk (~1.5-2.5× wall on GPU) — keep
     # "menu" on CPU-only hosts.
     verdict_mode: str = "menu"
+    # Default prompt family for the mapping stage: "incident" (post-incident /
+    # IR write-ups — the intruder is the adversary, defender/victim activity
+    # is not evidence) or "pentest" (penetration-test / red-team reports —
+    # the testers play the adversary, usually narrating in the first person,
+    # and findings merely identified but not exploited are not evidence).
+    # Chosen per run in the upload dialog and sent as `report_type` on
+    # POST /reports/{id}/map, which overrides this default.
+    report_type: str = "incident"
     cors_origins: list[str] = ["http://localhost:5173"]
 
     class Config:

@@ -86,11 +86,19 @@ export type VerifyMode = "off" | "demote" | "drop";
  * ~1.5× slower. */
 export type VerdictMode = "menu" | "independent";
 
+/** What kind of document was uploaded — picks the mapping prompt family:
+ * "incident" maps what the intruder was observed doing; "pentest" treats the
+ * testers as the adversary (first-person narration counts, findings merely
+ * identified but not exploited don't). */
+export type ReportType = "incident" | "pentest";
+
 export interface MapOptions {
   /** Verification mode for this run. Omit for the server default. */
   verify_mode?: VerifyMode;
   /** Verdict architecture for this run. Omit for the server default. */
   verdict_mode?: VerdictMode;
+  /** Report kind for this run's prompts. Omit for the server default. */
+  report_type?: ReportType;
 }
 
 export async function startMapping(

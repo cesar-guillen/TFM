@@ -94,10 +94,12 @@ def retrieval_coverage(
     return exact_rank, family_reachable, unreachable
 
 
-def mapped_ids_once(report_id: str) -> set[str]:
+def mapped_ids_once(
+    report_id: str, verify: str | None = None, report_type: str | None = None
+) -> set[str]:
     """One full mapping pass -> the set of technique ids in the aggregated
     layer (what the user sees, so parent-promoted ids are included)."""
-    layer = aggregate_mappings(map_report(report_id))
+    layer = aggregate_mappings(map_report(report_id, verify=verify, report_type=report_type))
     return {t["techniqueID"] for t in layer["techniques"]}
 
 
@@ -108,6 +110,8 @@ def run_eval(
     core: dict[str, str],
     acceptable: dict[str, str],
     chunk_count: int = 0,
+    verify: str | None = None,
+    report_type: str | None = None,
 ) -> EvalResult:
     retrieval_rank, family_reachable, unreachable = retrieval_coverage(report_id, top_k, core)
     universe = _expected_universe(core, acceptable)
@@ -124,7 +128,7 @@ def run_eval(
     )
 
     for _ in range(runs):
-        mapped = mapped_ids_once(report_id)
+        mapped = mapped_ids_once(report_id, verify=verify, report_type=report_type)
         exact = {t for t in core if t in mapped}
         family = {t for t in core if _family_hit(t, mapped)}
         unexpected = mapped - universe

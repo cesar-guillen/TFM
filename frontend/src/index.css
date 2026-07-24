@@ -1025,6 +1025,103 @@ body {
   background: var(--accent, #4f8ef7);
   color: #fff;
 }
+/* The steered-toward option stays visibly marked even when the user has
+   selected a different one (the active style already covers the default case). */
+.uploader__mode--recommended:not(.uploader__mode--active) {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.uploader__option-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ── Upload options dialog: opens once a file is picked, before uploading ── */
+
+.uploader-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(4, 6, 10, 0.62);
+}
+
+.uploader-modal__card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 480px;
+  padding: 1.15rem 1.25rem 1.25rem;
+  text-align: left; /* the hero uploader centers text; the dialog shouldn't */
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  animation: uploader-modal-in 0.16s ease-out;
+}
+
+@keyframes uploader-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uploader-modal__card {
+    animation: none;
+  }
+}
+
+.uploader-modal__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.uploader-modal__title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.uploader-modal__file {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploader-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.uploader__rec-pill {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  white-space: nowrap;
+}
 
 .uploader__option-hint {
   font-size: 0.72rem;
