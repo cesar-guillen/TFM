@@ -1,5 +1,17 @@
 import type { Catalog, Layer } from "../types/attack";
 
+/** Carries the HTTP status so callers can tell a 404 (the job no longer exists
+ * server-side — e.g. the backend restarted and lost its in-memory job
+ * registry) apart from a transient network failure worth retrying. */
+export class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
 export interface IngestStarted {
   report_id: string;
   filename: string;
@@ -35,7 +47,7 @@ export async function ingestPdf(file: File): Promise<IngestStarted> {
 export async function getIngestStatus(reportId: string): Promise<IngestStatus> {
   const res = await fetch(`/api/ingest/${reportId}/status`);
   if (!res.ok) {
-    throw new Error(`Fetching ingest status failed: ${res.status} ${await res.text()}`);
+    throw new HttpError(res.status, `Fetching ingest status failed: ${res.status} ${await res.text()}`);
   }
   return res.json();
 }
@@ -115,7 +127,7 @@ export async function cancelMapping(reportId: string): Promise<void> {
 export async function getMappingStatus(reportId: string): Promise<MappingStatus> {
   const res = await fetch(`/api/reports/${reportId}/map/status`);
   if (!res.ok) {
-    throw new Error(`Fetching mapping status failed: ${res.status} ${await res.text()}`);
+    throw new HttpError(res.status, `Fetching mapping status failed: ${res.status} ${await res.text()}`);
   }
   return res.json();
 }

@@ -25,6 +25,7 @@ export default function App() {
       >
         <Link
           to="/"
+          state={{ home: true }}
           title="Back to the dashboard"
           style={{
             display: "flex",

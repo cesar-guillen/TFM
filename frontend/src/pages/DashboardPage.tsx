@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   cancelIngest,
   cancelMapping,
@@ -21,6 +21,7 @@ import { useAttackData } from "../hooks/useAttackData";
 import { useIngestJob } from "../hooks/useIngestJob";
 import { useMappingJob } from "../hooks/useMappingJob";
 import { layerToState } from "../types/attack";
+import { clearActiveRun, loadActiveRun, saveActiveRun } from "../utils/activeRun";
 import { formatDuration } from "../utils/format";
 
 /** The main dashboard is the matrix library: upload a new report, or open,
@@ -28,7 +29,23 @@ import { formatDuration } from "../utils/format";
  * processed it switches to the live run view (matrix preview filling in +
  * floating progress bubble), and back to the library afterwards. */
 export default function DashboardPage() {
-  const [started, setStarted] = useState<IngestStarted | null>(null);
+  // Rehydrate an in-flight run left behind by a tab close / reload / navigation
+  // away (read once on mount). The backend job survives keyed by report_id, so
+  // resuming is just a matter of re-adopting the id and letting the polling
+  // hooks pick it back up; the real status overwrites this "parsing" placeholder
+  // on the first poll. See utils/activeRun.
+  const persistedRun = useMemo(() => loadActiveRun(), []);
+  // The header logo navigates to "/" with `{ home: true }` so it can force the
+  // library view even when the run view already lives at "/" (same route, so
+  // the Link alone changes nothing). A plain reload/direct visit has no such
+  // state and instead resumes the run view below.
+  const location = useLocation();
+  const cameHome = (location.state as { home?: boolean } | null)?.home === true;
+  const [started, setStarted] = useState<IngestStarted | null>(
+    persistedRun
+      ? { report_id: persistedRun.reportId, filename: persistedRun.filename, status: "parsing" }
+      : null,
+  );
   // Verification mode (false-positive filtering): chosen before upload,
   // applied when the mapping run starts. Persisted so the choice sticks.
   const [verifyMode, setVerifyMode] = useState<VerifyMode>(() => {
@@ -48,15 +65,42 @@ export default function DashboardPage() {
     setVerdictMode(value);
     localStorage.setItem("tfm-verdict-mode", value);
   }
-  const [mappingReportId, setMappingReportId] = useState<string | null>(null);
+  const [mappingReportId, setMappingReportId] = useState<string | null>(
+    persistedRun?.mappingStarted ? persistedRun.reportId : null,
+  );
   const [mapAttempt, setMapAttempt] = useState(0);
   const [startingMap, setStartingMap] = useState(false);
   const [showDoneToast, setShowDoneToast] = useState(false);
-  // Library state (only shown/fetched while no run is active).
+  // Which screen is showing. Decoupled from `started` on purpose: going to the
+  // library ("← All matrices") switches the view but keeps `started` /
+  // `mappingReportId` alive, so the pipeline keeps polling in the background
+  // and the run stays resumable via a banner — instead of being abandoned. A
+  // rehydrated run opens straight into its run view.
+  const [view, setView] = useState<"run" | "library">(
+    cameHome ? "library" : persistedRun ? "run" : "library",
+  );
+  // Clicking the header logo (a fresh navigation to "/" carrying `home`) snaps
+  // back to the library, keeping any in-progress run resumable in the banner.
+  useEffect(() => {
+    if (cameHome) setView("library");
+  }, [location.key, cameHome]);
+  // Library state.
   const [entries, setEntries] = useState<SavedMatrixSummary[] | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
-  const job = useIngestJob(started?.report_id ?? null);
-  const mappingJob = useMappingJob(mappingReportId, mapAttempt);
+
+  // A restored run whose backend job no longer exists (the status endpoint
+  // 404s — e.g. the backend restarted since the tab was closed) is stale:
+  // forget it and fall back to the library, where any completed run still is.
+  const dropStaleRun = useCallback(() => {
+    setStarted(null);
+    setMappingReportId(null);
+    setShowDoneToast(false);
+    setView("library");
+    clearActiveRun();
+  }, []);
+
+  const job = useIngestJob(started?.report_id ?? null, dropStaleRun);
+  const mappingJob = useMappingJob(mappingReportId, mapAttempt, dropStaleRun);
   const { catalog, loading, error } = useAttackData();
 
   // A new upload replaces the previous report *and* its mapping run.
@@ -64,6 +108,9 @@ export default function DashboardPage() {
     setMappingReportId(null);
     setShowDoneToast(false);
     setStarted(next);
+    setView("run");
+    // Remember it so a reload during processing returns to this run.
+    saveActiveRun({ reportId: next.report_id, filename: next.filename, mappingStarted: false });
   }
 
   async function handleGenerate() {
@@ -72,6 +119,9 @@ export default function DashboardPage() {
     try {
       await startMapping(started.report_id, { verify_mode: verifyMode, verdict_mode: verdictMode });
       setMappingReportId(started.report_id);
+      // Record that mapping is underway, so a reload resumes the map job
+      // directly instead of re-triggering the auto-start.
+      saveActiveRun({ reportId: started.report_id, filename: started.filename, mappingStarted: true });
       setMapAttempt((a) => a + 1); // restart polling even if the report id didn't change (retry)
     } catch (e) {
       // Surfaced crudely for now; the status endpoint reports job-level errors.
@@ -91,10 +141,15 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ingestDone, mappingReportId]);
 
-  // Pop the "matrix ready" toast when the mapping run reaches "done".
+  // Pop the "matrix ready" toast when the mapping run reaches "done", and stop
+  // persisting the run: it's finished and now lives in the library, so a reload
+  // should land there rather than re-open this (in-memory) finished editor.
   const mappingDone = mappingJob?.status === "done";
   useEffect(() => {
-    if (mappingDone) setShowDoneToast(true);
+    if (mappingDone) {
+      setShowDoneToast(true);
+      clearActiveRun();
+    }
   }, [mappingDone]);
 
   // Stop the run and free the user: request cancellation of whichever stage
@@ -117,6 +172,8 @@ export default function DashboardPage() {
       setStarted(null);
       setMappingReportId(null);
       setShowDoneToast(false);
+      setView("library");
+      clearActiveRun();
     }
   }
 
@@ -127,13 +184,16 @@ export default function DashboardPage() {
     if (runCancelled) {
       setStarted(null);
       setMappingReportId(null);
+      setView("library");
+      clearActiveRun();
     }
   }, [runCancelled]);
 
-  // (Re)load the library whenever it's the visible view — including on return
-  // from a run, which will have added its own entry.
+  // (Re)load the library whenever it's the visible view, and again the moment a
+  // background run completes (so its freshly-saved entry appears without having
+  // to leave and come back).
   useEffect(() => {
-    if (started) return;
+    if (view !== "library") return;
     let cancelled = false;
     setLibraryError(null);
     getMatrixHistory()
@@ -142,7 +202,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [started]);
+  }, [view, mappingDone]);
 
   async function handleDelete(e: React.MouseEvent, id: string) {
     e.preventDefault(); // the card is a link now — don't navigate
@@ -155,8 +215,52 @@ export default function DashboardPage() {
     }
   }
 
-  // No active run: the library — upload a new report, or open a saved matrix.
-  if (!started) {
+  // Bring the (still-polling) run view back to the foreground.
+  function resumeRun() {
+    setView("run");
+  }
+
+  // A short live status line for the resume banner.
+  function runStatusLabel(): string {
+    if (mappingJob) {
+      switch (mappingJob.status) {
+        case "mapping":
+          return `Mapping techniques… ${mappingJob.chunks_mapped}/${mappingJob.chunk_count}`;
+        case "warming":
+          return "Loading the model…";
+        case "retrieving":
+          return "Retrieving candidates…";
+        case "aggregating":
+          return "Finishing up…";
+        case "error":
+          return "Mapping failed — reopen to retry";
+        default:
+          return "Mapping…";
+      }
+    }
+    if (job) {
+      switch (job.status) {
+        case "embedding":
+          return `Embedding chunks… ${job.chunks_embedded}/${job.chunk_count}`;
+        case "parsing":
+          return "Extracting text…";
+        case "chunking":
+          return "Chunking sections…";
+        case "error":
+          return "Ingest failed — reopen to retry";
+        default:
+          return "Processing…";
+      }
+    }
+    return "Processing…";
+  }
+
+  // The library view — upload a new report, resume an in-progress run, or open a
+  // saved matrix. Shown whenever the library is selected; an active run (if any)
+  // keeps polling in the background and is offered as a resume banner, while a
+  // finished run appears as a card in the grid.
+  if (view === "library" || !started) {
+    const showResume = started !== null && !mappingDone;
     return (
       <div className="dashboard-main">
         <section className="dashboard-main__upload">
@@ -173,6 +277,20 @@ export default function DashboardPage() {
             onVerdictModeChange={handleVerdictModeChange}
           />
         </section>
+
+        {showResume && (
+          <button type="button" className="run-resume" onClick={resumeRun}>
+            <span className="run-resume__dot" aria-hidden />
+            <span className="run-resume__text">
+              <span className="run-resume__label">Report in progress</span>
+              <span className="run-resume__detail">
+                <span className="run-resume__file">{started!.filename}</span>
+                <span className="run-resume__status">{runStatusLabel()}</span>
+              </span>
+            </span>
+            <span className="run-resume__cta">Resume</span>
+          </button>
+        )}
 
         <section className="matrix-library">
           <div className="matrix-library__header">
@@ -254,10 +372,18 @@ export default function DashboardPage() {
   // tfm_saved_id stamp).
   const finished = mappingDone && Boolean(mappingJob?.layer);
 
+  // "← All matrices": show the library but keep the run alive and resumable in
+  // the background (it re-appears as the resume banner). If it already
+  // finished there's nothing left to resume — it's a library entry now — so
+  // fully reset instead.
   function backToLibrary() {
-    setStarted(null);
-    setMappingReportId(null);
     setShowDoneToast(false);
+    setView("library");
+    if (mappingDone) {
+      setStarted(null);
+      setMappingReportId(null);
+      clearActiveRun();
+    }
   }
 
   // Active run: the matrix fills the page and progress lives in a draggable

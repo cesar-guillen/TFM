@@ -1599,6 +1599,130 @@ body {
   }
 }
 
+/* ── Resume card: an in-progress run offered back from the library view ──── */
+
+.run-resume {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  /* Share the library's column (matches .matrix-library) so it lines up with
+     "Your matrices" and the cards below, instead of spanning the whole page.
+     The top margin keeps it clear of the filters above it. */
+  max-width: 1080px;
+  margin: 2.75rem auto 0;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.run-resume:hover,
+.run-resume:focus-visible {
+  border-color: var(--accent);
+  background: var(--bg-raised);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.run-resume__dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: run-resume-pulse 1.7s ease-out infinite;
+}
+
+@keyframes run-resume-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(124, 140, 255, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(124, 140, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(124, 140, 255, 0);
+  }
+}
+
+.run-resume__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.run-resume__label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.run-resume__detail {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.run-resume__file {
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.run-resume__status {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.run-resume__cta {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #0b0e14;
+  background: var(--accent);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.run-resume__cta::after {
+  content: "→";
+}
+
+.run-resume:hover .run-resume__cta {
+  background: var(--accent-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-resume__dot {
+    animation: none;
+  }
+}
+
 /* ── Previously computed matrices (history dropdown) ─────────────────────── */
 
 .matrix-history {
