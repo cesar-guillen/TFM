@@ -15,6 +15,17 @@ EMPHASIS_RE = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1")
 # single `#` level, losing the hierarchy; the numeric prefix recovers it.
 NUMBER_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)*)[.)]?\s+")
 
+# Some PDFs' sub-headings come out of pymupdf4llm as **bold body text** rather
+# than markdown headings, so HEADING_RE (which needs a literal `#`) never sees
+# them: the whole parent section is then packed by size alone and one chunk
+# straddles several unrelated ATT&CK topics. A block that is exactly one bold
+# span on one line AND carries a numeric prefix is such a heading. The number
+# is doing double duty — it is the depth signal `effective_level` already
+# understands, and the discriminator that keeps bold *emphasis* out of the
+# hierarchy ("**1.4 TB** of corporate data…" is a wrapped prose line, bold
+# table header rows are multi-span, "**Report Reference:** MHP-…" is metadata).
+BOLD_HEADING_RE = re.compile(r"^\*\*(?!\s)([^*\n]{1,120}?)\s*\*\*$")
+
 # Classification stamps rendered as headings (page banners, TLP markings).
 # They are not section structure: ignored for the heading stack entirely.
 BANNER_RE = re.compile(r"do not distribute|confidential|proprietary|tlp:\s*(clear|white|green|amber|red)", re.I)
@@ -154,6 +165,15 @@ def _clean_heading(text: str) -> str:
         text = unwrapped
 
 
+def _bold_heading(block: str) -> str | None:
+    """The title of a bold-rendered numbered sub-heading, or None. See
+    BOLD_HEADING_RE — the whole block must be the single bold span."""
+    match = BOLD_HEADING_RE.match(block.strip())
+    if match and NUMBER_PREFIX_RE.match(match.group(1)):
+        return match.group(1)
+    return None
+
+
 def _is_toc_block(text: str) -> bool:
     lines = [line for line in text.splitlines() if line.strip()]
     hits = sum(1 for line in lines if DOT_LEADER_RE.search(line))
@@ -289,13 +309,16 @@ def chunk_markdown(
 
     for text, start, end in blocks:
         heading_match = HEADING_RE.match(text)
-        if heading_match:
+        bold_title = None if heading_match else _bold_heading(text)
+        if heading_match or bold_title:
             flush()
             buffer = []
-            title = _clean_heading(heading_match.group(2))
+            title = _clean_heading(heading_match.group(2)) if heading_match else bold_title
             if not title or BANNER_RE.search(title):
                 continue  # section break, but not part of the hierarchy
-            level = effective_level(len(heading_match.group(1)), title)
+            # A bold heading always carries a numeric prefix, so effective_level
+            # resolves its depth from the numbering and never reads md_level.
+            level = effective_level(len(heading_match.group(1)) if heading_match else 6, title)
             while heading_stack and heading_stack[-1][0] >= level:
                 heading_stack.pop()
             heading_stack.append((level, title, bool(NUMBER_PREFIX_RE.match(title))))

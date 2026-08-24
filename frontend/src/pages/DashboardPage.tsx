@@ -51,7 +51,7 @@ export default function DashboardPage() {
   // applied when the mapping run starts. Persisted so the choice sticks.
   const [verifyMode, setVerifyMode] = useState<VerifyMode>(() => {
     const saved = localStorage.getItem("tfm-verify-mode");
-    return saved === "demote" || saved === "drop" ? saved : "off";
+    return saved === "demote" || saved === "off" ? saved : "drop";
   });
   function handleVerifyModeChange(value: VerifyMode) {
     setVerifyMode(value);

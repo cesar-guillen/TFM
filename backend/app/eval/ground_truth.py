@@ -245,6 +245,74 @@ _PENTEST_ACCEPTABLE: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# OpenSlop (synthetic, `*OpenSlop.pdf`, added 2026-07-25) — Windows-domain
+# ransomware/exfil intrusion authored by the user specifically to stress
+# recall: 12 tactics, many behaviors phrased in plain prose without signal
+# words (Kerberoasting never named in §4.4, masquerading only implied by the
+# fake task name). The user's 34-technique seed list was written in pre-v19
+# ids; two were translated to the bundled v19.1 catalog (T1562.001 → T1685,
+# T1070.001 → T1685.005 — the enum-constrained mapper cannot emit retired
+# ids, and an external reviewer with pre-v19 knowledge will wrongly call
+# T1685.005 a hallucination; it is "Clear Windows Event Logs" in v19.1).
+# ---------------------------------------------------------------------------
+
+_OPENSLOP_CORE: dict[str, str] = {
+    # §4.1-4.2 Initial access + execution
+    "T1566.001": "spearphishing email with malicious attachment (§4.1)",
+    "T1204.002": "user opened the macro attachment (§4.1-4.2)",
+    "T1059.001": "encoded PowerShell command execution (§4.2)",
+    # §4.3 Persistence
+    "T1547.001": "registry run keys for autostart (§4.3)",
+    "T1053.005": "scheduled task disguised as a fake Edge update (§4.3)",
+    "T1136.001": "created a new local account on several servers (§4.3)",
+    # §4.4 Privilege escalation
+    "T1068": "exploitation for privilege escalation (§4.4)",
+    "T1078.002": "use of valid domain accounts (§4.4)",
+    "T1558.003": "SPN service tickets requested and cracked offline — Kerberoasting, deliberately unnamed (§4.4, timeline)",
+    # §4.5 Defense evasion
+    "T1027": "payloads obfuscated and base64-encoded (§4.2, §4.5)",
+    "T1112": "tampered with the registry to weaken host protections (§4.5)",
+    "T1685": "disabled or modified the endpoint protection agents (§4.5; v19.1 id for the old T1562.001)",
+    "T1685.005": "cleared Windows event logs (§4.5; v19.1 id for the old T1070.001)",
+    "T1036": "fake Edge-update task name / renamed tooling — masquerading, implied only (§4.3, §4.5)",
+    # §4.6 Credential access
+    "T1003.001": "LSASS memory access for credential dumping (§4.6)",
+    "T1555": "queried credential stores and browser-saved secrets (§4.6)",
+    # §4.7 Discovery
+    "T1087": "enumerated local and domain accounts (§4.7)",
+    "T1482": "domain trust discovery (§4.7)",
+    "T1018": "identified other reachable hosts (§4.7)",
+    "T1046": "scanned for listening services (§4.7)",
+    "T1082": "collected system configuration details (§4.7)",
+    # §4.8 Lateral movement
+    "T1021.001": "RDP between hosts (§4.8)",
+    "T1021.002": "SMB/Windows admin shares (§4.8)",
+    "T1570": "tooling copied from host to host across administrative shares (§4.8)",
+    # §4.9 Command & control
+    "T1071.001": "C2 over HTTPS web protocols (§4.9)",
+    "T1105": "pulled additional tools down to compromised hosts (§4.9)",
+    "T1219": "installed a legitimate commercial remote-management application (§4.9)",
+    # §4.10 Collection & exfiltration
+    "T1005": "data collected from local drives (§4.10)",
+    "T1039": "data collected from network shares (§4.10)",
+    "T1560.001": "archiving utility, multi-part archives (§4.10)",
+    "T1567.002": "exfiltration to cloud storage (§4.10)",
+    # §4.11 Impact
+    "T1490": "shadow copy deletion / backup catalog corruption (§4.11)",
+    "T1489": "stopped database and backup-related services (§4.11)",
+    "T1486": "ransomware encryption (§4.11)",
+}
+
+_OPENSLOP_ACCEPTABLE: dict[str, str] = {
+    "T1555.003": "browser-saved secrets — the precise sub of the core T1555 (§4.6)",
+    "T1036.004": "fake Edge-update scheduled-task name — precise sub of core T1036 (§4.3)",
+    "T1074": "data staged before exfil (FILE-SRV-01) — user-reviewed as a fair catch (§4.10)",
+    "T1074.001": "local data staging read of the same evidence (§4.10)",
+    "T1110.002": "offline cracking of Kerberos tickets — component of the Kerberoasting chain (§4.4)",
+}
+
+
 REPORTS: dict[str, ReportGroundTruth] = {
     "meridian-grove": ReportGroundTruth(
         name="Meridian Grove",
@@ -257,6 +325,12 @@ REPORTS: dict[str, ReportGroundTruth] = {
         pdf_glob="/data/uploads/*Meridian_Health_Partners_Incident_Report.pdf",
         core=_HEALTH_CORE,
         acceptable=_HEALTH_ACCEPTABLE,
+    ),
+    "openslop": ReportGroundTruth(
+        name="OpenSlop",
+        pdf_glob="/data/uploads/*OpenSlop.pdf",
+        core=_OPENSLOP_CORE,
+        acceptable=_OPENSLOP_ACCEPTABLE,
     ),
     "acme-pentest": ReportGroundTruth(
         name="Acme Retail Group Pentest",

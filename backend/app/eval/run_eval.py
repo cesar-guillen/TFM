@@ -54,6 +54,28 @@ def _fmt_pct(values: list[int], denom: int) -> str:
     return f"{avg:.1f}/{denom} ({100 * avg / denom:.0f}%)  [runs: {min(values)}–{max(values)}]"
 
 
+def _prf(hits: list[int], fps: list[int], n_core: int) -> tuple[float, float, float]:
+    """Macro-averaged precision / recall / F1 over the runs.
+
+    TP = labelled core techniques recovered, FP = "unexpected" (mapped but in
+    neither label set — `acceptable` is deliberately neutral, counted as
+    neither), FN = core techniques not recovered. Computed per run and then
+    averaged, not derived from the averages: a run that maps twice as much is
+    not allowed to dominate the ratio.
+    """
+    if not hits:
+        return 0.0, 0.0, 0.0
+    ps, rs, fs = [], [], []
+    for tp, fp in zip(hits, fps):
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / n_core if n_core else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        ps.append(precision)
+        rs.append(recall)
+        fs.append(f1)
+    return sum(ps) / len(ps), sum(rs) / len(rs), sum(fs) / len(fs)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Mapping eval harness")
     parser.add_argument("--report", choices=sorted(REPORTS), default=DEFAULT_REPORT)
@@ -65,6 +87,8 @@ def main() -> None:
                         help="verification-pass mode (default: settings.verify_mode)")
     parser.add_argument("--report-type", choices=["incident", "pentest"], default=None,
                         help="prompt family (default: settings.report_type)")
+    parser.add_argument("--verdict", choices=["menu", "independent"], default=None,
+                        help="verdict architecture (default: settings.verdict_mode)")
     args = parser.parse_args()
 
     gt = REPORTS[args.report]
@@ -86,14 +110,15 @@ def main() -> None:
         f"Config: model={settings.ollama_model}  top_k={args.top_k}  "
         f"sentence_retrieval={settings.sentence_retrieval}  runs={args.runs}\n"
         f"        report_type={args.report_type or settings.report_type}  "
-        f"verify={args.verify or settings.verify_mode}\n"
+        f"verify={args.verify or settings.verify_mode}  "
+        f"verdict={args.verdict or settings.verdict_mode}\n"
         f"Ground truth: {len(core)} core + {len(acceptable)} acceptable techniques\n"
     )
 
     res = run_eval(
         report_id, runs=args.runs, top_k=args.top_k,
         core=core, acceptable=acceptable, chunk_count=chunk_count,
-        verify=args.verify, report_type=args.report_type,
+        verify=args.verify, report_type=args.report_type, verdict=args.verdict,
     )
 
     print("=" * 72)
@@ -146,6 +171,18 @@ def main() -> None:
         frequent = sorted(res.unexpected_freq.items(), key=lambda kv: (-kv[1], kv[0]))
         for tid, cnt in frequent[:12]:
             print(f"      {tid:<11} {cnt}/{res.runs} runs")
+
+    # Precision / recall / F1 — F1 is the headline number any tuning change is
+    # judged on (recall alone rewards spraying techniques; precision alone
+    # rewards mapping almost nothing). Reported for both label strictnesses:
+    # exact = the precise id had to be mapped; family = parent/sub counts, so
+    # the mapper is credited for finding the right behaviour at the wrong
+    # granularity. Printed last so it is the number that ends every run.
+    if res.exact_per_run:
+        print()
+        for label, hits in (("exact ", res.exact_per_run), ("family", res.family_per_run)):
+            p, r, f1 = _prf(hits, res.unexpected_per_run, len(core))
+            print(f"  {label} precision {p:.3f} | recall {r:.3f} | F1 {f1:.3f}")
 
 
 if __name__ == "__main__":

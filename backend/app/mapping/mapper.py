@@ -306,9 +306,12 @@ VERIFY_SYSTEM_PROMPT = (
     "authentication process). Also answer no when the described activity was "
     "performed by defenders or the victim organization rather than the "
     "adversary. Terse but on-point evidence still counts as yes, and so does "
-    "evidence naming a specific mechanism, protocol, or tool the technique "
-    "or one of its sub-techniques covers — 'Remote Desktop Protocol' shows "
-    "the broader Remote Services technique in use."
+    "evidence naming a specific mechanism, protocol, tool, artifact or command "
+    "that the technique or one of its sub-techniques covers, even when the "
+    "passage never uses the technique's own words: 'Remote Desktop Protocol' "
+    "shows the broader Remote Services technique in use, and deleting volume "
+    "shadow copies or corrupting a backup catalog shows system recovery being "
+    "inhibited."
 )
 
 # Pentest variant of the judge: same specificity rules, actor recast to the
@@ -526,13 +529,16 @@ def map_report(
     verify: str | None = None,
     verdict: str | None = None,
     report_type: str | None = None,
+    top_k: int | None = None,
 ) -> list[ChunkMapping]:
     """Run stage 6 for one indexed report: hybrid candidates per chunk, LLM
     verdicts, validated and flattened into ChunkMappings. `verify` picks this
     run's verification mode — "off" | "demote" | "drop"; `verdict` picks the
     verdict architecture — "menu" | "independent"; `report_type` picks the
-    prompt family — "incident" | "pentest" (None = settings defaults for
-    all three)."""
+    prompt family — "incident" | "pentest"; `top_k` overrides how many
+    retrieval candidates each chunk is judged against (None = settings
+    defaults for all four — the eval harness passes top_k explicitly so its
+    --top-k applies to the verdict half, not only to coverage scoring)."""
     verify_run = settings.verify_mode if verify is None else verify
     if verify_run not in VERIFY_MODES:
         raise ValueError(f"verify must be one of {VERIFY_MODES}, got {verify_run!r}")
@@ -552,7 +558,8 @@ def map_report(
     )
     verify_system = PENTEST_VERIFY_SYSTEM_PROMPT if pentest else VERIFY_SYSTEM_PROMPT
     verify_actor = "the testers" if pentest else "the attacker"
-    candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=settings.map_candidates)
+    top_k_run = settings.map_candidates if top_k is None else top_k
+    candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=top_k_run)
     if not candidates_by_chunk:
         return []
 

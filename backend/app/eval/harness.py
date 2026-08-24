@@ -95,11 +95,23 @@ def retrieval_coverage(
 
 
 def mapped_ids_once(
-    report_id: str, verify: str | None = None, report_type: str | None = None
+    report_id: str,
+    verify: str | None = None,
+    report_type: str | None = None,
+    verdict: str | None = None,
+    top_k: int | None = None,
 ) -> set[str]:
     """One full mapping pass -> the set of technique ids in the aggregated
-    layer (what the user sees, so parent-promoted ids are included)."""
-    layer = aggregate_mappings(map_report(report_id, verify=verify, report_type=report_type))
+    layer (what the user sees, so parent-promoted ids are included). `top_k`
+    must be passed explicitly: map_report otherwise reads
+    settings.map_candidates, which silently ignores the harness's --top-k
+    (the coverage half honored it, the verdict half didn't — fixed 2026-08-22)."""
+    layer = aggregate_mappings(
+        map_report(
+            report_id, verify=verify, report_type=report_type,
+            verdict=verdict, top_k=top_k,
+        )
+    )
     return {t["techniqueID"] for t in layer["techniques"]}
 
 
@@ -112,6 +124,7 @@ def run_eval(
     chunk_count: int = 0,
     verify: str | None = None,
     report_type: str | None = None,
+    verdict: str | None = None,
 ) -> EvalResult:
     retrieval_rank, family_reachable, unreachable = retrieval_coverage(report_id, top_k, core)
     universe = _expected_universe(core, acceptable)
@@ -128,7 +141,10 @@ def run_eval(
     )
 
     for _ in range(runs):
-        mapped = mapped_ids_once(report_id, verify=verify, report_type=report_type)
+        mapped = mapped_ids_once(
+            report_id, verify=verify, report_type=report_type,
+            verdict=verdict, top_k=top_k,
+        )
         exact = {t for t in core if t in mapped}
         family = {t for t in core if _family_hit(t, mapped)}
         unexpected = mapped - universe

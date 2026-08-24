@@ -92,7 +92,18 @@ class Settings(BaseSettings):
     #              the matrix instead of vanishing (the balanced middle)
     #   "drop"   — flagged mappings are removed (max precision)
     # Verification errors always fail open (mapping kept unchanged).
-    verify_mode: str = "off"
+    # Default flipped "off" → "drop" 2026-08-22 after the grouped-mode A/B
+    # (harness, --runs 4 --top-k 8 --verdict menu, all three labelled incident
+    # reports): exact F1 openslop 0.481→0.558, health 0.472→0.551 (0.456 on a
+    # same-session off re-run), grove 0.700→0.736; unexpected/run 10.2→3.5,
+    # 19.8→9.5, 10.0→6.5; exact recall flat (14→14.5, 13→12.8, 21.5→21.2) at
+    # ~+27% wall time. `demote` scores like `off` on this harness by
+    # construction (it removes nothing and the harness ignores confidence).
+    # Known cost: the judge's named-mechanism blind spot deterministically
+    # rejects T1490 Inhibit System Recovery on shadow-copy/backup-catalog
+    # phrasing (3/3 in a direct probe), so that core technique goes 4/4 → 0/4
+    # on both ransomware reports. See docs/grouped-tuning-log.md cycle 2.
+    verify_mode: str = "drop"
     # Verdict architecture (EXPERIMENTAL): "menu" = one LLM call per chunk
     # with all retrieval candidates offered at once (the original design);
     # "independent" = one small call per candidate ("does the excerpt

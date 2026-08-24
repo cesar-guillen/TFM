@@ -28,9 +28,14 @@ const VERDICT_MODE_HINTS: Record<VerdictMode, string> = {
 };
 
 // The options we steer users toward (the app defaults, and the config that
-// measured best): keep every mapped technique, judged grouped per passage.
-// Report type has no recommendation — it depends on the document.
-const RECOMMENDED_VERIFY: VerifyMode = "off";
+// measured best): double-check every mapped technique and drop the ones that
+// fail, judged grouped per passage. Strict became the recommendation on
+// 2026-08-22 when the eval harness measured it improving exact F1 on all
+// three labelled reports at flat recall (mean 0.551 → 0.615, false positives
+// roughly halved) — keep this in sync with `verify_mode` in
+// backend/app/core/config.py. Report type has no recommendation — it depends
+// on the document.
+const RECOMMENDED_VERIFY: VerifyMode = "drop";
 const RECOMMENDED_VERDICT: VerdictMode = "menu";
 
 function formatSize(bytes: number): string {
@@ -56,7 +61,7 @@ interface UploadPanelProps {
 export default function UploadPanel({
   onStarted,
   variant = "hero",
-  verifyMode = "off",
+  verifyMode = "drop",
   onVerifyModeChange,
   verdictMode = "menu",
   onVerdictModeChange,
@@ -222,7 +227,7 @@ export default function UploadPanel({
                 <div className="uploader__option-row">
                   <span className="uploader__option-title">
                     <strong>False-positive filtering</strong>
-                    <span className="uploader__rec-pill">Recommended: Off</span>
+                    <span className="uploader__rec-pill">Recommended: Strict</span>
                   </span>
                   <div className="uploader__modes" role="radiogroup" aria-label="False-positive filtering">
                     {(["off", "demote", "drop"] as VerifyMode[]).map((mode) => (
