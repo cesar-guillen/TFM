@@ -65,6 +65,33 @@ class Settings(BaseSettings):
     # (windows are still embedded at ingest, so the flag flips without
     # re-ingesting).
     sentence_retrieval: bool = True
+    # Cross-encoder reranking of the fused candidate pool (app.retrieval.rerank).
+    # EXPERIMENTAL, off by default — measured 2026-08-24 (cycle 12) and it is
+    # the cleanest demonstration yet that *coverage is a veto, not a predictor*:
+    # it improved exact-reachable coverage on 2 of 3 labelled reports and
+    # regressed none (20/16/24 -> 22/17/24, the best selection profile of the
+    # whole tuning series), and then LOST exact F1 on 3 of 3 (0.596->0.577,
+    # 0.597->0.568, 0.734->0.650; mean 0.642 -> 0.598). Mechanism, per-report:
+    # on openslop and health it did exactly what it was built to do — recall up
+    # (16.8->18.8, 11.5->12.0) — but roughly doubled false positives
+    # (5.5->12.2, 3.0->6.2), because the candidates it promotes are plausible
+    # cousins the 8b then accepts; on grove, where coverage was unchanged, exact
+    # recall still collapsed 21.0->16.8 purely because the *identity* of the 8
+    # candidates changed (menu-composition sensitivity, the same effect that
+    # killed cycles 6-9). Kept behind this flag for the per-candidate-verdicts
+    # redesign (VERDICT_MODE=independent), where menu composition cannot exist
+    # and a recall-raising selector should convert — the same reasoning that
+    # keeps EXAMPLE_RETRIEVAL around. Runs locally on CPU via onnxruntime +
+    # tokenizers (already dependencies via chromadb); degrades to a no-op when
+    # the model files are absent, so enabling it on a checkout that never
+    # fetched them is safe.
+    rerank: bool = False
+    rerank_model_dir: str = "/data/reranker"
+    # int8-quantized ms-marco-MiniLM-L-6-v2: measured identical coverage to the
+    # 87MB fp32 model (63, improving 2 of 3 reports and regressing none) at
+    # 2.7s/chunk vs 10.6s, from a 22MB file.
+    rerank_model_file: str = "model_int8.onnx"
+    rerank_threads: int = 4
     # Per-window priority seats in fusion: every sentence window's top-N dense
     # hits are seated in the fused top_k AHEAD of fused-score ordering (deduped
     # across windows; ordered by per-window rank tier, then fused score, if

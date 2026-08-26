@@ -11,6 +11,7 @@ from app.core.chroma import (
 )
 from app.core.config import settings
 from app.ingest.sentences import build_windows
+from app.retrieval import rerank
 from app.retrieval.bm25 import bm25_search, bm25_search_sentences
 
 # Candidates each half contributes before fusion. Wider than any final top_k so
@@ -21,12 +22,24 @@ CANDIDATE_POOL = 30
 # Standard RRF damping constant (Cormack et al.): rank contributions are
 # 1/(60+rank), which keeps a #1 rank from steamrolling everything else.
 RRF_K = 60
-# Each half's strongest candidates are guaranteed a seat in the fused top_k.
+# Each half's strongest candidate is guaranteed a seat in the fused top_k.
 # Plain RRF lets weak two-half agreement outrank strong single-half signal
 # (dense #3 alone scores 1/63 ≈ 0.016 while dense #15 + BM25 #20 agreement
 # scores ≈ 0.026) — measured costing T1014 Rootkit (dense #3, fused #9) and
 # T1490 (BM25 #8) their seats on the Meridian Grove report.
-RESERVE_PER_HALF = 2
+#
+# Depth 1, not 2 (2026-08-24): reserves are rank-blind, and at depth 2 they
+# were the least productive of the three seat allocators by a wide margin.
+# Measured over all 73 chunks of the three labelled reports (584 seats):
+# window quota 216 seats -> 72 core techniques (33%), fused RRF 160 -> 37
+# (23%), half reserves 208 -> 16 (7.7%) — i.e. a third of the candidate
+# budget spent at a quarter of the quota's hit rate. Rank-blindness is the
+# reason: BM25-only reserved seats have median score 23.3 while the core
+# techniques they displace have median 26.6, so the reserve routinely seats a
+# weaker keyword hit than the one it evicts. Between the quota (top_k//2) and
+# depth-2 reserves (up to 6 ids), fused ranking had almost no seats left to
+# allocate at top_k=8.
+RESERVE_PER_HALF = 1
 
 # ATT&CK technique ids cited literally in report text (CISA advisories cite
 # inline: "... traffic encryption features. [T1573]"). Neither retrieval half
@@ -86,7 +99,10 @@ Half = list[tuple[str, dict, float | None]]
 
 
 def _fuse(
-    halves: list[Half], top_k: int, window_seats: dict[str, int] | None = None
+    halves: list[Half],
+    top_k: int,
+    window_seats: dict[str, int] | None = None,
+    rerank_windows: list[str] | None = None,
 ) -> list[TechniqueMatch]:
     """Reciprocal Rank Fusion across any number of halves. Rank-based rather
     than score-based on purpose: cosine distances and BM25 scores live on
@@ -120,20 +136,39 @@ def _fuse(
             if distance is not None and (entry["distance"] is None or distance < entry["distance"]):
                 entry["distance"] = distance
 
+    scores = {a: fused[a]["score"] for a in fused}
     ranking = sorted(fused, key=lambda a: (-fused[a]["score"], a))
+
+    # Cross-encoder pass over the strongest RERANK_DEPTH candidates (see
+    # app.retrieval.rerank). When it fires, the blended order replaces the pure
+    # RRF order *and* the half reserves are skipped: the reserve exists to stop
+    # RRF burying strong single-half signal, which is precisely what the
+    # cross-encoder now judges directly, and the screened winner (window quota
+    # + blend, no reserve) beat every reserve-bearing variant.
+    ce: dict[str, float] = {}
+    if rerank_windows and rerank.available():
+        head = ranking[: rerank.RERANK_DEPTH]
+        kb = get_attack_collection().get(ids=head, include=["documents"])
+        ce = rerank.rerank_scores(rerank_windows, dict(zip(kb["ids"], kb["documents"])))
+    if ce:
+        ranking = rerank.blended_order(scores, ce)
+
     seated = sorted(
         (a for a in (window_seats or {}) if a in fused),
         key=lambda a: (window_seats[a], -fused[a]["score"], a),
     )[: top_k // 2]
     selected = list(seated)
-    reserved = {a for results in halves for a, _, _ in results[:RESERVE_PER_HALF]}
-    for pool in (reserved, None):
+    pools: tuple = (None,)
+    if not ce:
+        pools = ({a for results in halves for a, _, _ in results[:RESERVE_PER_HALF]}, None)
+    for pool in pools:
         for attack_id in ranking:
             if len(selected) >= top_k:
                 break
             if attack_id not in selected and (pool is None or attack_id in pool):
                 selected.append(attack_id)
-    selected.sort(key=lambda a: (-fused[a]["score"], a))
+    position = {a: i for i, a in enumerate(ranking)}
+    selected.sort(key=lambda a: position.get(a, len(position)))
     return [
         _match_from_meta(a, fused[a]["meta"], fused[a]["score"], fused[a]["distance"])
         for a in selected
@@ -275,8 +310,8 @@ def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
     embedding = embed_text(text)
     halves.append(dense_hits([embedding])[0])
 
+    windows = build_windows(text) if settings.sentence_retrieval else []
     if settings.sentence_retrieval:
-        windows = build_windows(text)
         if len(windows) > 1:
             window_half, window_seats = _pooled_window_candidates(
                 dense_hits(embed_texts(windows))
@@ -286,7 +321,9 @@ def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
     else:
         halves.append(bm25_search(text, CANDIDATE_POOL))
 
-    return _prepend_explicit_ids(text, _fuse(halves, top_k, window_seats), top_k)
+    return _prepend_explicit_ids(
+        text, _fuse(halves, top_k, window_seats, windows or [text]), top_k
+    )
 
 
 def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> dict[str, list[TechniqueMatch]]:
@@ -348,6 +385,13 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
                 for chunk_id, indices in indices_by_chunk.items()
             }
 
+    def _body(i: int) -> str:
+        """Body only (chunk documents are "<breadcrumb>\n\n<body>"): the
+        breadcrumb line as a sentence voter crowns generic hits for the section
+        title; the windows half is body-only for the same reason."""
+        doc = chunks["documents"][i]
+        return doc.split("\n\n", 1)[1] if chunks["metadatas"][i].get("heading_path") else doc
+
     def halves_for(i: int, chunk_id: str) -> tuple[list[Half], dict[str, int]]:
         halves = [chunk_hits[i]]
         window_seats: dict[str, int] = {}
@@ -355,21 +399,21 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
             window_half, window_seats = window_half_by_chunk[chunk_id]
             halves.append(window_half)
         if settings.sentence_retrieval:
-            # Body only (chunk documents are "<breadcrumb>\n\n<body>"): the
-            # breadcrumb line as a sentence voter crowns generic hits for the
-            # section title; the windows half is body-only for the same reason.
-            doc = chunks["documents"][i]
-            body = doc.split("\n\n", 1)[1] if chunks["metadatas"][i].get("heading_path") else doc
-            halves.append(bm25_search_sentences(body, CANDIDATE_POOL))
+            halves.append(bm25_search_sentences(_body(i), CANDIDATE_POOL))
         else:
             halves.append(bm25_search(chunks["documents"][i], CANDIDATE_POOL))
         return halves, window_seats
 
     def fused_for(i: int, chunk_id: str) -> list[TechniqueMatch]:
         halves, window_seats = halves_for(i, chunk_id)
+        # Rerank against the chunk's own sentence windows — rebuilt from the
+        # body rather than read back from report_windows, since the reranker
+        # needs the window *text*, not its embedding.
+        body = _body(i)
+        windows = build_windows(body) if rerank.available() else []
         return _prepend_explicit_ids(
             chunks["documents"][i],
-            _fuse(halves, top_k_per_chunk, window_seats),
+            _fuse(halves, top_k_per_chunk, window_seats, windows or [body]),
             top_k_per_chunk,
         )
 
