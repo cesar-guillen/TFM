@@ -1,0 +1,19 @@
+# Production build used by docker-compose.aws.yml's `caddy` service. Unlike
+# frontend/Dockerfile (the dev-mode Vite server), this produces a static
+# build and serves it directly from Caddy — no Node process runs in
+# production, and the reverse proxy + TLS + Basic Auth all live in one
+# container. See deploy/Caddyfile for the routing/auth rules applied on top
+# of these static files.
+FROM node:22-slim AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+FROM caddy:2-alpine
+
+COPY --from=build /app/dist /srv/frontend

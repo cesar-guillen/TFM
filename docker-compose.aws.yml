@@ -1,0 +1,138 @@
+# Standalone production compose file for an AWS EC2 deployment behind Caddy
+# (automatic Let's Encrypt HTTPS + single-user HTTP Basic Auth). See
+# README.md's "AWS EC2 deployment" section for the full setup walkthrough.
+#
+#   docker compose -f docker-compose.aws.yml up -d --build
+#
+# Deliberately NOT meant to be merged via `-f docker-compose.yml -f
+# docker-compose.aws.yml`: Compose merges list-valued keys like `ports:`
+# ADDITIVELY across -f files, so an override file can never remove a port
+# the base file already publishes. The whole point of this file is that
+# `backend`/`ollama` stop being reachable from the internet directly (only
+# Caddy's 80/443 should be) — a standalone file that redefines those
+# services with `expose:` instead of `ports:` is simpler and less
+# error-prone than fighting that merge behavior. This does duplicate a
+# handful of lines from docker-compose.yml/-gpu.yml; that's an accepted
+# tradeoff for a deployment-only file that isn't part of day-to-day dev.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    expose:
+      - "11434"
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-4}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:--1}
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # One-shot: pulls the chat + embedding models into the ollama service.
+  # Identical to docker-compose.yml's service of the same name — see there
+  # for the detailed rationale comments.
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - MODELS=${OLLAMA_EMBED_MODEL:-nomic-embed-text} ${OLLAMA_MODEL:-llama3.1:8b}
+    volumes:
+      - ollama_models:/ollama-data:ro
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        until ollama ls >/dev/null 2>&1; do echo "waiting for ollama server..."; sleep 2; done
+        for m in $$MODELS; do
+          if ollama show "$$m" >/dev/null 2>&1; then
+            echo "$$m already present"
+            continue
+          fi
+          echo "=============================================================="
+          echo " Downloading model $$m"
+          echo " FIRST-RUN ONLY: chat models are multi-GB, so this is the"
+          echo " slow part of the first start — the backend waits for it."
+          echo " Every later start skips this step."
+          echo "=============================================================="
+          start=$$(date +%s)
+          ollama pull "$$m" &
+          pull_pid=$$!
+          i=0
+          while kill -0 "$$pull_pid" 2>/dev/null; do
+            sleep 2
+            i=$$((i + 2))
+            if [ $$((i % 20)) -eq 0 ] && kill -0 "$$pull_pid" 2>/dev/null; then
+              mb=$$(du -sm /ollama-data/models/blobs 2>/dev/null | cut -f1)
+              el=$$(( $$(date +%s) - start ))
+              echo "... still downloading $$m — $${mb:-?} MB in the model store, $$((el / 60))m$$((el % 60))s elapsed"
+            fi
+          done
+          wait "$$pull_pid" || { echo "ERROR: pull of $$m failed"; exit 1; }
+          echo "$$m downloaded in $$(( $$(date +%s) - start ))s"
+        done
+        echo "all models present — backend starting"
+    restart: "no"
+
+  backend:
+    build: ./backend
+    expose:
+      - "8000"
+    environment:
+      - UPLOAD_DIR=${UPLOAD_DIR:-/data/uploads}
+      - LAYERS_DIR=${LAYERS_DIR:-/data/layers}
+      - CHROMA_PERSIST_DIR=${CHROMA_PERSIST_DIR:-/data/chroma}
+      - ATTACK_STIX_DIR=${ATTACK_STIX_DIR:-/data/attack}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
+      - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      - MAP_WORKERS=${MAP_WORKERS:-4}
+      - MAP_CANDIDATES=${MAP_CANDIDATES:-8}
+      - MAP_DESC_CHARS=${MAP_DESC_CHARS:-250}
+      - MAP_NUM_THREAD=${MAP_NUM_THREAD:-0}
+    volumes:
+      - ./data:/data
+    # No --reload and no bind-mounted source in production: the image is
+    # rebuilt on deploy instead of relying on dev live-reload ergonomics.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      ollama:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Reverse proxy: terminates TLS (automatic Let's Encrypt cert for
+  # $DOMAIN), enforces single-user HTTP Basic Auth in front of everything,
+  # serves the frontend's static production build, and reverse-proxies
+  # /api/* and /health to the backend. The ONLY service in this file that
+  # publishes ports to the host.
+  caddy:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+      - BASIC_AUTH_USER=${BASIC_AUTH_USER}
+      - BASIC_AUTH_HASH=${BASIC_AUTH_HASH}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  caddy_data:
+  caddy_config:

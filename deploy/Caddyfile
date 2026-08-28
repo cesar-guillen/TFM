@@ -1,0 +1,32 @@
+# Reverse proxy + TLS + single-user Basic Auth for the AWS EC2 deployment
+# (docker-compose.aws.yml). Mounted read-only into the caddy container so it
+# can be edited without rebuilding the image. {$VAR} placeholders are filled
+# from the container's environment (DOMAIN / BASIC_AUTH_USER /
+# BASIC_AUTH_HASH, passed through from .env by docker-compose.aws.yml).
+#
+# Caddy automatically requests and renews a Let's Encrypt certificate for
+# {$DOMAIN} on first start (needs 80+443 reachable from the internet for the
+# ACME HTTP-01 challenge) and redirects plain HTTP to HTTPS. Everything
+# behind the basic_auth block — the API and the static frontend alike — is
+# gated by the single configured username/password.
+{$DOMAIN} {
+	encode gzip
+
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle /health {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		root * /srv/frontend
+		try_files {path} /index.html
+		file_server
+	}
+}

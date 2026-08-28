@@ -120,6 +120,141 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
 
 Plain `docker compose up` keeps working on CPU-only machines.
 
+## AWS EC2 deployment (single-user, HTTPS + Basic Auth)
+
+`docker-compose.aws.yml` is a **standalone** production compose file (not
+merged with the files above) for hosting the app on an internet-facing EC2
+GPU instance, gated by a single hardcoded username/password. It puts
+[Caddy](https://caddyserver.com/) in front of everything: Caddy terminates
+TLS (an automatic, auto-renewing Let's Encrypt certificate for your domain),
+enforces HTTP Basic Auth for the one account, serves the frontend's static
+production build, and reverse-proxies `/api/*` to the backend. `backend` and
+`ollama` are not published to the host at all in this file — Caddy's 80/443
+are the only ports exposed, so nothing else is reachable even if the AWS
+security group were misconfigured.
+
+No application code changes are involved — auth and TLS live entirely at the
+proxy layer, and since the frontend and API end up same-origin behind Caddy,
+the frontend's existing relative `/api/...` fetches work unmodified.
+
+### 1. Buy/point a domain
+
+Any domain works, even a cheap one — Caddy just needs a real DNS name to
+request a certificate for. Don't point the A record yet; do that after step 4
+once you have a stable IP.
+
+### 2. Launch the EC2 instance
+
+- Type: a GPU instance, e.g. `g4dn.xlarge` (matches this project's tested
+  GPU profile).
+- AMI: Ubuntu 22.04 LTS (or an NVIDIA-driver-preinstalled "Deep Learning
+  Base" AMI if available in your region, to skip the driver install below).
+- Storage: **≥120GB gp3** root volume (model weights + Docker images +
+  Chroma + uploaded reports add up fast), EBS encryption on.
+
+### 3. Security group
+
+- `22/tcp` — inbound from **your IP only** (not `0.0.0.0/0`).
+- `80/tcp` and `443/tcp` — inbound from `0.0.0.0/0` (80 is needed for the
+  Let's Encrypt ACME challenge and the HTTP→HTTPS redirect).
+- Nothing else. `8000`/`5173`/`11434` are never opened here, matching
+  `docker-compose.aws.yml` never publishing them in the first place —
+  defense in depth.
+
+### 4. Elastic IP
+
+Allocate and associate an Elastic IP with the instance so the public IP (and
+therefore the DNS record and the issued certificate) survives a stop/start.
+Then point your domain's A record at this IP.
+
+### 5. Install Docker + NVIDIA support on the instance
+
+```
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+
+# Docker Engine + Compose v2 plugin
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER   # log out/in (or `newgrp docker`) to pick this up
+
+# NVIDIA driver (skip if using a Deep-Learning AMI that already has it)
+sudo ubuntu-drivers autoinstall
+sudo reboot   # then reconnect
+
+# NVIDIA Container Toolkit
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# Verify:
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
+
+### 6. Clone the repo and check out this branch
+
+```
+git clone <your-repo-url>
+cd TFM
+git checkout aws-ec2-deploy
+```
+
+### 7. Configure `.env`
+
+```
+cp .env.example .env
+```
+
+Edit `.env` and set:
+- `OLLAMA_MODEL=llama3.1:8b` (the GPU-profile model — full quality).
+- `DOMAIN=yourdomain.com`
+- `BASIC_AUTH_USER=` your chosen username.
+- `BASIC_AUTH_HASH=` — generate with (use a long random password, e.g.
+  `openssl rand -base64 24`):
+  ```
+  docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password-here'
+  ```
+  Note this stores a **bcrypt hash**, never the plaintext password.
+
+Then `chmod 600 .env` and never commit it (it's already gitignored).
+
+### 8. Bring the stack up
+
+```
+docker compose -f docker-compose.aws.yml up -d --build
+docker compose -f docker-compose.aws.yml exec backend python -m app.attack.build_kb
+```
+
+Watch first-run progress:
+```
+docker compose -f docker-compose.aws.yml logs -f ollama-init   # model download (first run only)
+docker compose -f docker-compose.aws.yml logs -f caddy         # certificate issuance
+```
+
+### 9. Verify
+
+Visit `https://yourdomain.com`, log in with the configured credentials, and
+run a real report through the pipeline end to end to confirm GPU mapping
+works.
+
+### 10. Ongoing hygiene
+
+- `sudo apt update && sudo apt upgrade -y` periodically, or enable
+  `unattended-upgrades`.
+- `.env` holds the auth hash and domain — keep it `chmod 600` and never
+  commit it.
+
+### 11. Tearing it down (e.g. once grading is finished)
+
+```
+docker compose -f docker-compose.aws.yml down
+```
+Then, in the AWS console: terminate the instance, release the Elastic IP,
+delete the security group, and remove/let lapse the DNS record and domain if
+you no longer need them — this stops all associated billing.
+
 ## Next steps
 
 Per the pipeline in CLAUDE.md, the next stage to build is chunking (stage 3) and hybrid retrieval (stage 4) against the report, now that the ATT&CK knowledge base (stage 5) is in place.
