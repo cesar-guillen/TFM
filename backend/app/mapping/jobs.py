@@ -7,7 +7,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Literal
 
-Status = Literal["warming", "retrieving", "mapping", "aggregating", "done", "error", "cancelled"]
+Status = Literal[
+    "warming", "retrieving", "mapping", "filtering", "aggregating", "done", "error", "cancelled"
+]
 
 TERMINAL_STATUSES = ("done", "error", "cancelled")
 

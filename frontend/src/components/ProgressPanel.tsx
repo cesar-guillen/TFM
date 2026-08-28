@@ -36,19 +36,22 @@ const MAPPING_LABELS: Record<MappingStatus["status"], string> = {
   warming: "Warming up the local LLM…", // replaced by device-aware wording below
   retrieving: "Retrieving candidate techniques…",
   mapping: "Mapping chunks with the LLM…",
+  filtering: "Removing low-confidence findings…",
   aggregating: "Aggregating techniques…",
   done: "Matrix generated",
   error: "Mapping failed",
   cancelled: "Run cancelled",
 };
 
-/** "Warm-up 40s · Retrieval 1s · Mapping 2m 10s" — per-phase durations from
- * the status endpoint (the running phase ticks, completed ones are frozen). */
+/** "Warm-up 40s · Retrieval 1s · Mapping 2m 10s · Filtering 8s" — per-phase
+ * durations from the status endpoint (the running phase ticks, completed ones
+ * are frozen). */
 function phaseTimes(stepSeconds: Record<string, number> | undefined): string {
   const phases: [string, string][] = [
     ["warming", "Warm-up"],
     ["retrieving", "Retrieval"],
     ["mapping", "Mapping"],
+    ["filtering", "Filtering"],
     ["aggregating", "Aggregation"],
   ];
   if (!stepSeconds) return "";
@@ -100,6 +103,24 @@ function MappingSection({
         </p>
         {mappingJob.step_seconds?.warming !== undefined && (
           <span className="progress-step__meta">Warm-up {formatDuration(mappingJob.step_seconds.warming)}</span>
+        )}
+      </div>
+    );
+  }
+
+  if (mappingJob.status === "filtering") {
+    return (
+      <div className="mapping-section">
+        <span className="badge badge-accent">{MAPPING_LABELS.filtering}</span>
+        <p className="mapping-section__hint">
+          Every mapped technique is checked against its evidence one more time — depending on your filtering
+          setting, low-confidence findings are flagged for review or removed before the matrix is finalized.
+        </p>
+        <div className="progress-step__bar progress-step__bar--indeterminate">
+          <div className="progress-step__bar-fill" />
+        </div>
+        {mappingJob.step_seconds?.filtering !== undefined && (
+          <span className="progress-step__meta">Filtering {formatDuration(mappingJob.step_seconds.filtering)}</span>
         )}
       </div>
     );

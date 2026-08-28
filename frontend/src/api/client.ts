@@ -56,6 +56,7 @@ export type MappingStatusValue =
   | "warming"
   | "retrieving"
   | "mapping"
+  | "filtering"
   | "aggregating"
   | "done"
   | "error"
@@ -76,8 +77,9 @@ export interface MappingStatus {
 }
 
 /** What the verification pass does with a mapping it can't confirm:
- * "off" = no verification, "demote" = keep it at a near-floor score with a
- * marked comment, "drop" = remove it. */
+ * "off" = no verification, "demote" = keep it at a near-floor score and flag
+ * it (rendered as a yellow-outlined cell — see LayerState.flagged), "drop" =
+ * remove it outright. */
 export type VerifyMode = "off" | "demote" | "drop";
 
 /** Verdict architecture: "menu" judges all candidate techniques of a chunk in
@@ -144,14 +146,6 @@ export async function getAttackCatalog(): Promise<Catalog> {
   const res = await fetch("/api/attack/catalog");
   if (!res.ok) {
     throw new Error(`Fetching ATT&CK catalog failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
-}
-
-export async function getMatrixLayer(): Promise<Layer> {
-  const res = await fetch("/api/matrix");
-  if (!res.ok) {
-    throw new Error(`Fetching matrix layer failed: ${res.status} ${await res.text()}`);
   }
   return res.json();
 }

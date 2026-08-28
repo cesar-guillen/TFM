@@ -12,6 +12,8 @@
   --accent-strong: #94a1ff;
   --danger: #f2555a;
   --danger-soft: rgba(242, 85, 90, 0.1);
+  --warning: #e8b93b;
+  --warning-soft: rgba(232, 185, 59, 0.14);
   --radius: 10px;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
@@ -185,6 +187,11 @@ body {
   color: var(--danger);
 }
 
+.badge-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 .btn-danger {
   border-color: var(--danger);
   color: var(--danger);
@@ -193,6 +200,47 @@ body {
 .btn-danger:hover:not(:disabled) {
   background: var(--danger-soft);
   border-color: var(--danger);
+}
+
+/* Small variant for header-row controls (back nav, History, Save) — same
+   shape as .btn, just tighter, so they read as part of one toolbar instead of
+   each carrying its own one-off sizing. */
+.btn-sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  border-radius: 7px;
+  gap: 0.3rem;
+}
+
+.btn-sm svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* Ghost secondary nav button ("← All matrices" / "← Dashboard") — sits beside
+   the title input, so it stays visually quiet until hovered rather than
+   competing with it as an equal-weight outlined button. */
+.btn-back {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.btn-back:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Chevron on a dropdown trigger (History, Menu) rotates to show open state,
+   instead of swapping a literal "▾"/"▴" glyph. */
+.btn-chevron {
+  transition: transform 0.15s ease;
+}
+
+.dropdown-trigger[aria-expanded="true"] .btn-chevron {
+  transform: rotate(180deg);
 }
 
 .attack-matrix {
@@ -331,10 +379,12 @@ body {
   justify-content: space-between;
   gap: 0.4rem;
   width: 100%;
+  min-height: 2.9rem;
   padding: 0.5rem 0.6rem;
   font-family: inherit;
-  font-size: 0.7rem;
+  font-size: 0.76rem;
   font-weight: 600;
+  line-height: 1.25;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text-dim);
@@ -342,8 +392,6 @@ body {
   border: none;
   border-bottom: 1px solid var(--border-soft);
   border-radius: 7px 7px 0 0;
-  white-space: nowrap;
-  overflow: hidden;
   cursor: pointer;
   transition: color 0.12s ease, background 0.12s ease;
   /* Stay pinned to the top of the scrolling grid so the tactic stays labelled
@@ -358,15 +406,23 @@ body {
   background: var(--accent-soft);
 }
 
+/* Two lines instead of one so a long tactic name (e.g. "Resource Development")
+   is fully readable instead of being ellipsized on a single cramped line —
+   the line-clamp is just a safety net for the rare name that still overflows
+   two lines in the narrowest columns. */
 .attack-matrix__column-header span:first-child {
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .attack-matrix__column-count {
   font-weight: 500;
   color: var(--text-faint);
   flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .attack-matrix__column-body {
@@ -379,6 +435,7 @@ body {
 .attack-matrix__group {
   display: flex;
   flex-direction: column;
+  transition: background 0.18s ease;
 }
 
 /* Expanded parent brackets its sub-techniques so they read as one cluster */
@@ -420,6 +477,73 @@ body {
   border-color: transparent;
 }
 
+/* A mapping the verification pass couldn't confirm but kept (Balanced/"demote"
+   mode) — a yellow outline instead of the old "[flagged by verification]"
+   text prefix on the comment, so it's visible at a glance across the whole
+   matrix without reading every cell's evidence. Box-shadow (not outline) so
+   it composes with --selected's outline instead of fighting it for the same
+   property. */
+.attack-matrix__cell--flagged {
+  box-shadow: 0 0 0 2px var(--warning);
+}
+
+/* Phase in when a technique first lands in the layer (a live mapping run
+   scoring it), phase out when it's dropped again (e.g. the false-positive
+   filtering pass removing it) — JS holds the cell's last known entry on
+   screen in AttackMatrix for exactly as long as the exit animation plays
+   (EXIT_MS in AttackMatrix.tsx must match the duration below). */
+.attack-matrix__cell--entering {
+  animation: matrix-cell-enter 420ms ease-out;
+}
+
+@keyframes matrix-cell-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.attack-matrix__cell--exiting {
+  animation: matrix-cell-exit 420ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes matrix-cell-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  30% {
+    box-shadow: 0 0 0 2px var(--danger);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attack-matrix__cell--entering,
+  .attack-matrix__cell--exiting {
+    animation: none;
+  }
+  .attack-matrix__cell--exiting {
+    opacity: 0.35;
+  }
+}
+
 /* Meta row: caret, id, count pill, spacer, edit + link. The name gets its own
    full-width row below so long names wrap naturally instead of one word/line. */
 .attack-matrix__cell-meta {
@@ -446,6 +570,35 @@ body {
 
 .attack-matrix__cell-name {
   overflow-wrap: break-word; /* full name, wraps across the whole cell width */
+}
+
+/* Expand/collapse animation for a technique's sub-technique cluster (single
+   caret toggle or "Expand all" alike, since both just flip the same
+   `expanded` state this reads). The sub-cells stay mounted at all times —
+   collapsed groups are clipped to zero height rather than removed from the
+   DOM — so the CSS grid-rows trick can animate to/from the content's natural
+   height without JS measuring it (a fixed max-height would either clip a
+   long list or leave a short one animating through mostly-empty space). */
+.attack-matrix__subgroup-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.attack-matrix__subgroup-wrap--open {
+  grid-template-rows: 1fr;
+}
+
+.attack-matrix__subgroup-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attack-matrix__subgroup-wrap,
+  .attack-matrix__group {
+    transition: none;
+  }
 }
 
 /* Sub-technique cluster: indented under the parent with a connector rail */
@@ -846,9 +999,12 @@ body {
   cursor: default;
 }
 
-/* Narrower columns than the full matrix, so text is tuned down a notch to match. */
+/* Narrower columns than the full matrix, so text is tuned down a notch to
+   match — still bigger than a single truncated line was, since the header
+   now wraps the name across up to two lines instead of ellipsizing it. */
 .attack-matrix--overview .attack-matrix__column-header {
-  font-size: 0.64rem;
+  font-size: 0.68rem;
+  min-height: 2.5rem;
   padding: 0.4rem 0.45rem;
 }
 
@@ -987,12 +1143,16 @@ body {
   user-select: none;
 }
 
+/* Always title+pill on their own line, mode buttons on the one below — a
+   fixed two-row layout so every option reads the same regardless of how many
+   buttons it has or how long its label is (previously a single wrapping flex
+   row, which only wrapped once its content overflowed the dialog width, so
+   some options ended up one line and others two, inconsistently). */
 .uploader__option-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
 
 .uploader__option strong {
@@ -1334,21 +1494,53 @@ body {
   background: var(--bg-raised);
 }
 
-.matrix-sort {
+/* Right-side header cluster: Save / History / Sort / Menu, one visual group
+   instead of loosely-spaced mismatched controls. */
+.matrix-toolbar {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.matrix-toolbar__divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-soft);
+  margin: 0 0.15rem;
+}
+
+.matrix-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-raised);
+  color: var(--text-faint);
   font-size: 0.78rem;
-  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.matrix-sort:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.matrix-sort svg {
+  flex-shrink: 0;
 }
 
 .matrix-sort select {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: none;
+  border: none;
   color: var(--text);
   font-size: 0.78rem;
-  padding: 0.3rem 0.45rem;
+  font-family: inherit;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
 }
 
 /* ── Floating progress bubble ────────────────────────────────────────────── */

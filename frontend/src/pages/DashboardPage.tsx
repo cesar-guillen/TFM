@@ -12,6 +12,7 @@ import {
   type VerdictMode,
   type VerifyMode,
 } from "../api/client";
+import { BackIcon } from "../components/icons";
 import MatrixHistoryMenu from "../components/MatrixHistoryMenu";
 import MatrixOverview from "../components/MatrixOverview";
 import MatrixWorkspace from "../components/MatrixWorkspace";
@@ -47,11 +48,13 @@ export default function DashboardPage() {
       ? { report_id: persistedRun.reportId, filename: persistedRun.filename, status: "parsing" }
       : null,
   );
-  // Verification mode (false-positive filtering): chosen before upload,
-  // applied when the mapping run starts. Persisted so the choice sticks.
+  // Verification mode (removes low-confidence findings): chosen before
+  // upload, applied when the mapping run starts. Persisted so the choice
+  // sticks. Balanced ("demote") is the recommended default — see
+  // RECOMMENDED_VERIFY in UploadPanel.tsx.
   const [verifyMode, setVerifyMode] = useState<VerifyMode>(() => {
     const saved = localStorage.getItem("tfm-verify-mode");
-    return saved === "demote" || saved === "off" ? saved : "drop";
+    return saved === "off" || saved === "drop" ? saved : "demote";
   });
   function handleVerifyModeChange(value: VerifyMode) {
     setVerifyMode(value);
@@ -416,8 +419,9 @@ export default function DashboardPage() {
           catalog={catalog}
           layer={mappingJob!.layer}
           leading={
-            <button className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }} onClick={backToLibrary}>
-              ← All matrices
+            <button className="btn btn-sm btn-back" onClick={backToLibrary}>
+              <BackIcon />
+              All matrices
             </button>
           }
         />
@@ -426,12 +430,9 @@ export default function DashboardPage() {
           <div className="panel-header" style={{ justifyContent: "space-between" }}>
             <h2>ATT&amp;CK Matrix</h2>
             <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button
-                className="btn"
-                style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}
-                onClick={backToLibrary}
-              >
-                ← All matrices
+              <button className="btn btn-sm btn-back" onClick={backToLibrary}>
+                <BackIcon />
+                All matrices
               </button>
               <MatrixHistoryMenu label="History" />
             </div>

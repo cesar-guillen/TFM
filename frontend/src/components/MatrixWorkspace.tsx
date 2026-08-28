@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createSavedMatrix, updateSavedMatrix } from "../api/client";
+import { SaveIcon, SortIcon } from "./icons";
 import MatrixHistoryMenu from "./MatrixHistoryMenu";
 import MatrixMenu from "./MatrixMenu";
 import MatrixOverview from "./MatrixOverview";
@@ -158,19 +159,20 @@ export default function MatrixWorkspace({
             title="Matrix title — used in the library and exports"
           />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div className="matrix-toolbar">
           <button
-            className="btn btn-primary"
-            style={{ padding: "0.3rem 0.7rem", fontSize: "0.78rem" }}
+            className="btn btn-sm btn-primary"
             onClick={() => void handleSave()}
             disabled={saveStatus === "saving"}
             title="Save this matrix to the library"
           >
+            <SaveIcon />
             {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : "Save"}
           </button>
+          <span className="matrix-toolbar__divider" />
           <MatrixHistoryMenu label="History" />
-          <label className="matrix-sort">
-            Sort
+          <label className="matrix-sort" title="Sort techniques within each tactic column">
+            <SortIcon />
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value as TechniqueSort)}>
               <option value="default">Default order</option>
               <option value="score">Score (high → low)</option>

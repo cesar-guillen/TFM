@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { HEAT_THEMES, cssGradient, themeById, useHeatTheme } from "../theme/heatThemes";
+import { ChevronDownIcon, MenuDotsIcon } from "./icons";
 
 interface MatrixMenuProps {
   mappedCount: number;
@@ -33,8 +34,15 @@ export default function MatrixMenu({ mappedCount, onExport, onExportSvg, onImpor
 
   return (
     <div className="matrix-menu" ref={ref}>
-      <button className="btn" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-        Menu ▾
+      <button
+        className="btn btn-sm dropdown-trigger"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <MenuDotsIcon />
+        Menu
+        <ChevronDownIcon className="btn-chevron" />
       </button>
       <input
         type="file"

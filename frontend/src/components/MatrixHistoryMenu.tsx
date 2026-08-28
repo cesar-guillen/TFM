@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { deleteSavedMatrix, getMatrixHistory, type SavedMatrixSummary } from "../api/client";
+import { ChevronDownIcon, HistoryIcon } from "./icons";
 
 /** Dropdown listing previously computed matrices (every finished mapping run,
  * persisted by the backend). Selecting one opens it in the full matrix editor
@@ -49,13 +50,14 @@ export default function MatrixHistoryMenu({ label = "Previous matrices" }: { lab
   return (
     <div className="matrix-menu" ref={ref}>
       <button
-        className="btn"
-        style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}
+        className="btn btn-sm dropdown-trigger"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        {label} ▾
+        <HistoryIcon />
+        {label}
+        <ChevronDownIcon className="btn-chevron" />
       </button>
 
       {open && (

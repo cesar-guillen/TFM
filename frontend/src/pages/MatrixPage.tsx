@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { getSavedMatrix } from "../api/client";
+import { BackIcon } from "../components/icons";
 import MatrixWorkspace from "../components/MatrixWorkspace";
 import { useAttackData } from "../hooks/useAttackData";
 import type { Layer } from "../types/attack";
 
-/** The standalone matrix editor route: loads the current generated layer, or
- * — with ?saved=<id> (dashboard cards / history menu) — a library entry, and
- * hands it to the shared MatrixWorkspace editor. */
+/** The standalone matrix editor route: bare (reached via the library's "Open
+ * editor ↗") starts a blank hand-built matrix; with ?saved=<id> (dashboard
+ * cards / history menu) it loads that library entry instead. Hands whichever
+ * one applies to the shared MatrixWorkspace editor. */
 export default function MatrixPage() {
-  const { catalog, layer, loading, error } = useAttackData();
+  const { catalog, loading, error } = useAttackData();
   const [savedLayer, setSavedLayer] = useState<Layer | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   // True after an import: the grid belongs to the imported file, so neither
@@ -39,9 +41,10 @@ export default function MatrixPage() {
     };
   }, [savedId]);
 
-  // What the workspace grid follows: null while detached (import) or still
-  // loading — the workspace only resets when this lands on a new object.
-  const shownLayer = detached ? null : savedId ? savedLayer : layer;
+  // What the workspace grid follows: a saved entry's layer once loaded, or
+  // null (blank matrix, ready for hand-building) while detached (import), not
+  // viewing a saved entry, or still loading it.
+  const shownLayer = detached || !savedId ? null : savedLayer;
 
   if (loading || error || !catalog) {
     return (
@@ -67,8 +70,9 @@ export default function MatrixPage() {
         layer={shownLayer}
         saveTargetId={savedId}
         leading={
-          <Link to="/" className="btn" style={{ padding: "0.3rem 0.6rem", fontSize: "0.78rem" }}>
-            ← Dashboard
+          <Link to="/" className="btn btn-sm btn-back">
+            <BackIcon />
+            Dashboard
           </Link>
         }
         onImported={() => {

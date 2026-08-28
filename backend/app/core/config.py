@@ -130,7 +130,14 @@ class Settings(BaseSettings):
     # rejects T1490 Inhibit System Recovery on shadow-copy/backup-catalog
     # phrasing (3/3 in a direct probe), so that core technique goes 4/4 → 0/4
     # on both ransomware reports. See docs/grouped-tuning-log.md cycle 2.
-    verify_mode: str = "drop"
+    # Default changed "drop" → "demote" 2026-08-28 at the user's explicit
+    # request: dropping silently risks losing a real technique with no way to
+    # notice, whereas demote keeps everything visible — a flagged mapping now
+    # renders with a yellow-outlined cell in the matrix (see ChunkMapping.flagged
+    # / aggregate_mappings' metadata below and AttackMatrix.tsx) instead of the
+    # old "[flagged by verification]" text prefix, so the reviewer sees exactly
+    # which cells to double-check without losing any of them outright.
+    verify_mode: str = "demote"
     # Verdict architecture (EXPERIMENTAL): "menu" = one LLM call per chunk
     # with all retrieval candidates offered at once (the original design);
     # "independent" = one small call per candidate ("does the excerpt

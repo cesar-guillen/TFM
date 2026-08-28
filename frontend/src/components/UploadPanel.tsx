@@ -17,8 +17,8 @@ const REPORT_TYPE_HINTS: Record<ReportType, string> = {
 const VERIFY_MODE_HINTS: Record<VerifyMode, string> = {
   off: "Every technique the model maps is kept as-is. Fastest.",
   demote:
-    "Each mapped technique is double-checked; ones that fail the check stay in the matrix but are scored near zero and marked, so you can review or ignore them.",
-  drop: "Each mapped technique is double-checked; ones that fail the check are removed. Fewest false positives, but can lose weakly-evidenced real techniques.",
+    "Each mapped technique is double-checked; low-confidence ones stay in the matrix, scored near zero and outlined in yellow, so you can review them yourself.",
+  drop: "Each mapped technique is double-checked; low-confidence ones are removed outright. Fewest false positives, but can lose weakly-evidenced real techniques.",
 };
 
 const VERDICT_MODE_HINTS: Record<VerdictMode, string> = {
@@ -27,15 +27,17 @@ const VERDICT_MODE_HINTS: Record<VerdictMode, string> = {
     "Each candidate technique is judged on its own — slightly better recall and identical results run-to-run, but can raise false positives on some reports and takes ~1.5× longer.",
 };
 
-// The options we steer users toward (the app defaults, and the config that
-// measured best): double-check every mapped technique and drop the ones that
-// fail, judged grouped per passage. Strict became the recommendation on
-// 2026-08-22 when the eval harness measured it improving exact F1 on all
-// three labelled reports at flat recall (mean 0.551 → 0.615, false positives
-// roughly halved) — keep this in sync with `verify_mode` in
-// backend/app/core/config.py. Report type has no recommendation — it depends
-// on the document.
-const RECOMMENDED_VERIFY: VerifyMode = "drop";
+// The options we steer users toward. Strict (drop) measured best on exact F1
+// in the eval harness (2026-08-22: mean 0.551 → 0.615 across the three
+// labelled reports, false positives roughly halved) and was the recommended
+// default for that reason — but silently dropping a low-confidence finding
+// means a real technique can vanish with nothing to notice. Balanced (demote)
+// became the recommendation on 2026-08-28 at the user's explicit request:
+// nothing is removed, low-confidence findings are just outlined in yellow in
+// the matrix so the reviewer sees exactly what to double-check. Keep this in
+// sync with `verify_mode` in backend/app/core/config.py. Report type has no
+// recommendation — it depends on the document.
+const RECOMMENDED_VERIFY: VerifyMode = "demote";
 const RECOMMENDED_VERDICT: VerdictMode = "menu";
 
 function formatSize(bytes: number): string {
@@ -61,7 +63,7 @@ interface UploadPanelProps {
 export default function UploadPanel({
   onStarted,
   variant = "hero",
-  verifyMode = "drop",
+  verifyMode = "demote",
   onVerifyModeChange,
   verdictMode = "menu",
   onVerdictModeChange,
@@ -226,10 +228,10 @@ export default function UploadPanel({
               <div className="uploader__option">
                 <div className="uploader__option-row">
                   <span className="uploader__option-title">
-                    <strong>False-positive filtering</strong>
-                    <span className="uploader__rec-pill">Recommended: Strict</span>
+                    <strong>Remove low-confidence findings</strong>
+                    <span className="uploader__rec-pill">Recommended: Balanced</span>
                   </span>
-                  <div className="uploader__modes" role="radiogroup" aria-label="False-positive filtering">
+                  <div className="uploader__modes" role="radiogroup" aria-label="Remove low-confidence findings">
                     {(["off", "demote", "drop"] as VerifyMode[]).map((mode) => (
                       <button
                         key={mode}

@@ -23,6 +23,11 @@ export interface LayerTechniqueEntry {
   score?: number;
   comment?: string;
   enabled?: boolean;
+  /** Standard Navigator per-technique metadata. We use it to carry the
+   * "flagged by verification" marker ({name: "flagged", value: "true"}) so it
+   * round-trips through save/export like any other layer field instead of
+   * living in prose inside `comment`. */
+  metadata?: { name: string; value: string }[];
 }
 
 export interface Layer {
@@ -37,8 +42,11 @@ export interface Layer {
   tfm_saved_id?: string;
 }
 
-/** In-memory editing state, keyed by technique ID for O(1) lookup. */
-export type LayerState = Record<string, { score: number; comment?: string }>;
+/** In-memory editing state, keyed by technique ID for O(1) lookup. `flagged`
+ * mirrors the layer's "flagged" metadata marker — a mapping the verification
+ * pass couldn't confirm but kept (Balanced/"demote" mode) — rendered as a
+ * yellow-outlined cell instead of a text prefix on the comment. */
+export type LayerState = Record<string, { score: number; comment?: string; flagged?: boolean }>;
 
 /** Vertical ordering of techniques inside each tactic column. */
 export type TechniqueSort = "default" | "score" | "name";
@@ -97,7 +105,8 @@ export function layerToState(layer: Layer): LayerState {
   const state: LayerState = {};
   for (const entry of layer.techniques) {
     if (entry.enabled === false) continue;
-    state[entry.techniqueID] = { score: entry.score ?? 100, comment: entry.comment };
+    const flagged = entry.metadata?.some((m) => m.name === "flagged" && m.value === "true");
+    state[entry.techniqueID] = { score: entry.score ?? 100, comment: entry.comment, flagged };
   }
   return state;
 }
@@ -105,11 +114,12 @@ export function layerToState(layer: Layer): LayerState {
 export function stateToLayer(state: LayerState, base: Layer): Layer {
   return {
     ...base,
-    techniques: Object.entries(state).map(([techniqueID, { score, comment }]) => ({
+    techniques: Object.entries(state).map(([techniqueID, { score, comment, flagged }]) => ({
       techniqueID,
       score,
       comment: comment || undefined,
       enabled: true,
+      ...(flagged ? { metadata: [{ name: "flagged", value: "true" }] } : {}),
     })),
   };
 }

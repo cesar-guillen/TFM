@@ -105,6 +105,10 @@ REPORT_TYPES = ("incident", "pentest")
 # resolves; mappings_so_far is a report-ordered snapshot of every accepted
 # mapping to date, so the caller can publish a live partial matrix.
 ProgressCallback = Callable[[int, int, list["ChunkMapping"]], None]
+# Fired once, right before a named post-verdict phase starts (currently just
+# "filtering" — the verification pass) — lets the job registry surface it as
+# its own status instead of the phase running invisibly inside "mapping".
+PhaseCallback = Callable[[str], None]
 
 # Polled before each chunk's LLM call; True aborts the run (user cancelled).
 AbortCheck = Callable[[], bool]
@@ -142,6 +146,12 @@ class ChunkMapping:
     confidence: int  # 0-100, the model's own confidence; used directly as the cell score
     evidence: str
     reason: str = ""  # the model's one-sentence justification for the mapping
+    # Set when the verification pass rejects this mapping in "demote" mode
+    # (kept, but capped near-floor) — carried as structured state rather than
+    # a text prefix on `reason`, so aggregate_mappings can surface it as a
+    # layer-metadata flag (rendered as a yellow-outlined cell) without
+    # polluting the human-readable evidence comment.
+    flagged: bool = False
 
 
 def _normalize(text: str) -> str:
@@ -526,19 +536,24 @@ def map_report(
     report_id: str,
     on_progress: ProgressCallback | None = None,
     should_abort: AbortCheck | None = None,
+    on_phase: PhaseCallback | None = None,
     verify: str | None = None,
     verdict: str | None = None,
     report_type: str | None = None,
     top_k: int | None = None,
 ) -> list[ChunkMapping]:
     """Run stage 6 for one indexed report: hybrid candidates per chunk, LLM
-    verdicts, validated and flattened into ChunkMappings. `verify` picks this
-    run's verification mode — "off" | "demote" | "drop"; `verdict` picks the
-    verdict architecture — "menu" | "independent"; `report_type` picks the
-    prompt family — "incident" | "pentest"; `top_k` overrides how many
-    retrieval candidates each chunk is judged against (None = settings
-    defaults for all four — the eval harness passes top_k explicitly so its
-    --top-k applies to the verdict half, not only to coverage scoring)."""
+    verdicts, validated and flattened into ChunkMappings. `on_phase` fires once
+    when a named post-verdict phase starts (currently just "filtering", the
+    verification pass — skipped entirely when verify is "off"), so a caller
+    can surface it as its own job status instead of it running silently inside
+    "mapping". `verify` picks this run's verification mode — "off" | "demote"
+    | "drop"; `verdict` picks the verdict architecture — "menu" |
+    "independent"; `report_type` picks the prompt family — "incident" |
+    "pentest"; `top_k` overrides how many retrieval candidates each chunk is
+    judged against (None = settings defaults for all four — the eval harness
+    passes top_k explicitly so its --top-k applies to the verdict half, not
+    only to coverage scoring)."""
     verify_run = settings.verify_mode if verify is None else verify
     if verify_run not in VERIFY_MODES:
         raise ValueError(f"verify must be one of {VERIFY_MODES}, got {verify_run!r}")
@@ -702,6 +717,8 @@ def map_report(
         if verify_run != "off" and result:
             if should_abort and should_abort():
                 raise MappingAborted()
+            if on_phase:
+                on_phase("filtering")
 
             def verify_one(m: ChunkMapping) -> ChunkMapping | None:
                 if _verify_mapping(
@@ -715,7 +732,7 @@ def map_report(
                     return m
                 if verify_run == "demote":
                     m.confidence = min(m.confidence, DEMOTED_CONFIDENCE)
-                    m.reason = f"[flagged by verification] {m.reason}"
+                    m.flagged = True
                     return m
                 return None
 

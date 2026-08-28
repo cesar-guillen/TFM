@@ -97,6 +97,7 @@ def _process(
             report_id,
             on_progress=on_progress,
             should_abort=lambda: is_cancel_requested(report_id),
+            on_phase=lambda phase: update_job(report_id, status=phase),
             verify=verify,
             verdict=verdict,
             report_type=report_type,

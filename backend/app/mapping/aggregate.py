@@ -65,14 +65,23 @@ def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19")
             seen.add(key)
             deduped.append(h)
         comment = "\n".join(_evidence_line(h) for h in deduped)
-        techniques.append(
-            {
-                "techniqueID": technique_id,
-                "score": best,
-                "comment": comment,
-                "enabled": True,
-            }
-        )
+        entry = {
+            "techniqueID": technique_id,
+            "score": best,
+            "comment": comment,
+            "enabled": True,
+        }
+        # Surfaced via standard Navigator per-technique metadata (rather than a
+        # text marker in the comment) so the frontend can render it as a
+        # yellow-outlined cell instead of prose the user has to read past —
+        # and it round-trips through save/export like any other layer field.
+        # Flagged if *any* supporting instance was demoted by the verification
+        # pass, even when a stronger, non-flagged instance elsewhere set the
+        # cell's score — the reviewer still benefits from knowing one piece of
+        # evidence for this technique didn't hold up.
+        if any(h.flagged for h in hits):
+            entry["metadata"] = [{"name": "flagged", "value": "true"}]
+        techniques.append(entry)
 
     # Promote parents of mapped sub-techniques that weren't mapped themselves.
     mapped = set(by_technique)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   sortSubtechniques,
   sortTechniques,
@@ -24,6 +24,99 @@ function findTechnique(catalog: Catalog, id: string): TechniqueSummary | undefin
     }
   }
   return undefined;
+}
+
+type CellTransition = "enter" | "exit";
+
+// Must match the CSS animation durations for .attack-matrix__cell--entering /
+// --exiting (index.css) — the timers below hold a removed cell's last known
+// entry on screen for exactly as long as its fade-out plays.
+const ENTER_MS = 420;
+const EXIT_MS = 420;
+
+/** Diffs `layer` against its previous value and returns (a) a map of
+ * technique id -> "enter"/"exit" for whichever ids were just added or removed
+ * — driving the phase-in/phase-out CSS classes on TechniqueCell — and (b) a
+ * display layer that still includes a just-removed id's last entry for the
+ * duration of its exit animation, merged under the real layer, so a technique
+ * dropped by the FP-filtering pass fades out instead of vanishing instantly.
+ * A technique newly appearing (a live mapping run) gets the same treatment in
+ * reverse: it's already in `layer`, it just also gets the "enter" class. */
+function useLayerTransitions(layer: LayerState): { transitions: Record<string, CellTransition>; displayLayer: LayerState } {
+  const prevLayerRef = useRef<LayerState>(layer);
+  const [transitions, setTransitions] = useState<Record<string, CellTransition>>({});
+  const [exitingEntries, setExitingEntries] = useState<LayerState>({});
+  const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    const prev = prevLayerRef.current;
+    prevLayerRef.current = layer;
+    if (prev === layer) return;
+
+    const added = Object.keys(layer).filter((id) => !(id in prev));
+    const removed = Object.keys(prev).filter((id) => !(id in layer));
+    if (added.length === 0 && removed.length === 0) return;
+
+    if (added.length) {
+      setTransitions((t) => {
+        const next = { ...t };
+        for (const id of added) next[id] = "enter";
+        return next;
+      });
+    }
+    if (removed.length) {
+      setExitingEntries((e) => {
+        const next = { ...e };
+        for (const id of removed) next[id] = prev[id];
+        return next;
+      });
+      setTransitions((t) => {
+        const next = { ...t };
+        for (const id of removed) next[id] = "exit";
+        return next;
+      });
+    }
+
+    for (const id of added) {
+      clearTimeout(timersRef.current[id]);
+      timersRef.current[id] = setTimeout(() => {
+        setTransitions((t) => {
+          if (t[id] !== "enter") return t;
+          const next = { ...t };
+          delete next[id];
+          return next;
+        });
+        delete timersRef.current[id];
+      }, ENTER_MS);
+    }
+    for (const id of removed) {
+      clearTimeout(timersRef.current[id]);
+      timersRef.current[id] = setTimeout(() => {
+        setExitingEntries((e) => {
+          const next = { ...e };
+          delete next[id];
+          return next;
+        });
+        setTransitions((t) => {
+          if (t[id] !== "exit") return t;
+          const next = { ...t };
+          delete next[id];
+          return next;
+        });
+        delete timersRef.current[id];
+      }, EXIT_MS);
+    }
+  }, [layer]);
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, []);
+
+  const displayLayer = useMemo(() => ({ ...exitingEntries, ...layer }), [exitingEntries, layer]);
+  return { transitions, displayLayer };
 }
 
 interface AttackMatrixProps {
@@ -62,6 +155,7 @@ export default function AttackMatrix({
   const editable = Boolean(onLayerChange);
   const normalizedQuery = query.trim().toLowerCase();
   const mappedCount = Object.keys(layer).length;
+  const { transitions, displayLayer } = useLayerTransitions(layer);
 
   // Side-scroll arrows for the full matrix (the overview preview fits its
   // full width with no side-scroll — see .attack-matrix--overview).
@@ -260,11 +354,12 @@ export default function AttackMatrix({
                 </button>
               )}
               <div className="attack-matrix__column-body">
-                {sortTechniques(visible, layer, sortBy).map((tech) => (
+                {sortTechniques(visible, displayLayer, sortBy).map((tech) => (
                   <TechniqueGroup
                     key={tech.id}
                     tech={tech}
-                    layer={layer}
+                    layer={displayLayer}
+                    transitions={transitions}
                     theme={theme}
                     editable={editable}
                     selected={selected}
@@ -339,6 +434,7 @@ export default function AttackMatrix({
 interface TechniqueGroupProps {
   tech: CatalogTechnique;
   layer: LayerState;
+  transitions: Record<string, CellTransition>;
   theme: HeatTheme;
   editable: boolean;
   selected: string | null;
@@ -353,6 +449,7 @@ interface TechniqueGroupProps {
 function TechniqueGroup({
   tech,
   layer,
+  transitions,
   theme,
   editable,
   selected,
@@ -371,6 +468,18 @@ function TechniqueGroup({
     sortBy
   );
 
+  // The sub-technique cluster needs to stay mounted for the whole collapse
+  // animation to play (see .attack-matrix__subgroup-wrap in index.css — its
+  // grid-rows transition animates against the content's real height, so
+  // removing the content mid-collapse would just snap it shut). Rather than
+  // mounting every group's sub-cells unconditionally, mount them once this
+  // group is opened for the first time and leave them mounted after that —
+  // groups never opened in this session cost nothing.
+  const [everOpened, setEverOpened] = useState(isExpanded);
+  useEffect(() => {
+    if (isExpanded) setEverOpened(true);
+  }, [isExpanded]);
+
   return (
     <div className={`attack-matrix__group${isExpanded && hasSubtechniques ? " attack-matrix__group--open" : ""}`}>
       <TechniqueCell
@@ -378,6 +487,7 @@ function TechniqueGroup({
         name={tech.name}
         url={tech.url}
         entry={layer[tech.id]}
+        transition={transitions[tech.id]}
         theme={theme}
         editable={editable}
         isSelected={selected === tech.id}
@@ -386,22 +496,29 @@ function TechniqueGroup({
         expanded={hasSubtechniques ? isExpanded : undefined}
         onToggleExpand={hasSubtechniques ? onToggleExpand : undefined}
       />
-      {isExpanded && hasSubtechniques && (
-        <div className="attack-matrix__subgroup">
-          {visibleSubs.map((sub) => (
-            <TechniqueCell
-              key={sub.id}
-              id={sub.id}
-              name={sub.name}
-              url={sub.url}
-              entry={layer[sub.id]}
-              theme={theme}
-              editable={editable}
-              isSelected={selected === sub.id}
-              onOpenCell={onOpenCell}
-              sub
-            />
-          ))}
+      {hasSubtechniques && (
+        <div className={`attack-matrix__subgroup-wrap${isExpanded ? " attack-matrix__subgroup-wrap--open" : ""}`}>
+          <div className="attack-matrix__subgroup-inner">
+            {everOpened && (
+              <div className="attack-matrix__subgroup">
+                {visibleSubs.map((sub) => (
+                  <TechniqueCell
+                    key={sub.id}
+                    id={sub.id}
+                    name={sub.name}
+                    url={sub.url}
+                    entry={layer[sub.id]}
+                    transition={transitions[sub.id]}
+                    theme={theme}
+                    editable={editable}
+                    isSelected={selected === sub.id}
+                    onOpenCell={onOpenCell}
+                    sub
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -412,7 +529,12 @@ interface TechniqueCellProps {
   id: string;
   name: string;
   url: string;
-  entry?: { score: number; comment?: string };
+  entry?: { score: number; comment?: string; flagged?: boolean };
+  /** "enter" briefly after this technique first appears in the layer (a
+   * mapping run just scored it), "exit" while it fades out after being
+   * dropped (e.g. by the verification pass removing a low-confidence
+   * finding). */
+  transition?: CellTransition;
   theme: HeatTheme;
   editable: boolean;
   isSelected: boolean;
@@ -428,6 +550,7 @@ function TechniqueCell({
   name,
   url,
   entry,
+  transition,
   theme,
   editable,
   isSelected,
@@ -444,6 +567,9 @@ function TechniqueCell({
     isSelected && "attack-matrix__cell--selected",
     (editable || hasSubs || entry) && "attack-matrix__cell--interactive",
     entry && "attack-matrix__cell--scored",
+    entry?.flagged && "attack-matrix__cell--flagged",
+    transition === "enter" && "attack-matrix__cell--entering",
+    transition === "exit" && "attack-matrix__cell--exiting",
   ]
     .filter(Boolean)
     .join(" ");
@@ -468,7 +594,7 @@ function TechniqueCell({
     <div
       className={classes}
       style={scoredStyle}
-      title={`${id} · ${name}${entry ? ` — score ${entry.score}` : ""}`}
+      title={`${id} · ${name}${entry ? ` — score ${entry.score}` : ""}${entry?.flagged ? " (flagged for review)" : ""}`}
       onClick={interactive ? handleClick : undefined}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : -1}
@@ -577,7 +703,7 @@ interface CellEditorProps {
   tech: TechniqueSummary;
   /** Absent while the technique isn't in the layer yet — the editor shows
    * defaults and the first change creates the entry. */
-  entry?: { score: number; comment?: string };
+  entry?: { score: number; comment?: string; flagged?: boolean };
   anchorRect: DOMRect;
   onScore: (score: number) => void;
   onComment: (comment: string) => void;
@@ -598,6 +724,11 @@ function CellEditor({ tech, entry, anchorRect, onScore, onComment, onRemove, onC
           ×
         </button>
       </div>
+      {entry?.flagged && (
+        <span className="badge badge-warning" title="A verification check on this technique's evidence didn't hold up — kept, but worth a second look">
+          Flagged for review
+        </span>
+      )}
       <label className="attack-matrix__editor-field">
         <span>Score</span>
         <div className="attack-matrix__editor-score">
@@ -634,7 +765,7 @@ function CellDetails({
   onClose,
 }: {
   tech: TechniqueSummary;
-  entry: { score: number; comment?: string };
+  entry: { score: number; comment?: string; flagged?: boolean };
   anchorRect: DOMRect;
   onClose: () => void;
 }) {
@@ -651,6 +782,11 @@ function CellDetails({
       </div>
       <div className="attack-matrix__details-score">
         <span className="badge">score {entry.score}</span>
+        {entry.flagged && (
+          <span className="badge badge-warning" title="A verification check on this technique's evidence didn't hold up — kept, but worth a second look">
+            Flagged for review
+          </span>
+        )}
         <a href={tech.url} target="_blank" rel="noreferrer" title={`Open ${tech.id} on attack.mitre.org`}>
           attack.mitre.org ↗
         </a>
