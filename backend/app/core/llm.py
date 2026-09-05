@@ -1,11 +1,11 @@
-"""Ollama chat client for the LLM mapping stage (pipeline stage 6).
+"""Ollama chat client for the LLM mapping stage.
 
-Uses /api/chat with a JSON-schema `format` constraint so the model's output is
-grammar-constrained server-side — the decoder literally cannot emit tokens that
-violate the schema. That, plus temperature 0, is most of the reliability story
-for a small (3B) local model; the rest is validation of the *content* (e.g.
-technique ids actually being among the offered candidates), which lives with
-the caller in app.mapping.mapper.
+Requests go to /api/chat with a JSON-schema `format` constraint, so the
+model's output is grammar-constrained server-side and cannot violate the
+schema. That plus temperature 0 is most of the reliability story for a small
+local model; validating the *content* (technique ids being among the offered
+candidates, quotes occurring in the chunk) is the caller's job — see
+app.mapping.mapper.
 """
 
 import json
@@ -19,25 +19,19 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# One chunk + 8 trimmed candidates + instructions ≈ 1.7k tokens; Ollama's
-# default 2048 ctx would silently truncate the tail, so size it explicitly.
+# One chunk + candidates + instructions is ~1.7k tokens; Ollama's 2048 default
+# would silently truncate the tail.
 NUM_CTX = 4096
-# Hard cap on generated tokens per verdict. Without a cap, a small model in
-# constrained-JSON mode can ramble for minutes on a slow CPU before closing
-# the object. Hitting the cap cuts the JSON mid-token (seen at 400 and again
-# at 700 with an evidence-rich chunk); chat_json salvages the complete prefix
-# instead of failing, so the cap bounds latency, not correctness.
+# Bounds worst-case latency, not correctness: a verdict cut off at the cap is
+# recovered by _salvage_truncated_json below.
 NUM_PREDICT = 700
-# Generation on a slow CPU takes a while per chunk; the per-request timeout has
-# to absorb worst-case model load + prompt eval + decode.
+# Must absorb worst-case model load + prompt eval + decode on a slow CPU.
 CHAT_TIMEOUT = 600.0
 
 
 def warm_chat_model() -> None:
-    """Make Ollama load the chat model without generating anything: a
-    /api/generate call with no prompt returns once the model is in memory.
-    Called fire-and-forget at backend startup (app.main) so the first mapping
-    run doesn't pay the cold load."""
+    """Make Ollama load the chat model without generating anything: an empty
+    /api/generate call returns once the model is in memory."""
     httpx.post(
         f"{settings.ollama_host}/api/generate",
         json={"model": settings.ollama_model},
@@ -67,28 +61,23 @@ def _physical_cores() -> int:
 
 @lru_cache(maxsize=1)
 def resolve_num_thread() -> int | None:
-    """None = leave it to Ollama. See settings.map_num_thread for the modes."""
+    """Threads per request; None leaves it to Ollama (settings.map_num_thread
+    == 0). Auto (-1) never exceeds the cores the CPU profiles' pinning allows,
+    nor the physical core count — oversubscribed threads slow decode down."""
     n = settings.map_num_thread
     if n == 0:
         return None
     if n > 0:
         return n
-    # auto: never more threads than the cores the CPU profiles' pinning allows
-    # ollama to run on (all-but-two), and never more than physical cores
-    # (hyperthreads slow decode down — measured on the 16-thread dev host).
     allowed = max(1, (os.cpu_count() or 3) - 2)
     return min(_physical_cores(), allowed)
 
 
 @lru_cache(maxsize=1)
 def resolve_map_workers() -> int:
-    """Concurrent mapping calls: settings.map_workers, or -1 = auto by RAM.
-
-    Auto uses the same >= 10 GiB threshold as the docker-compose.cpu.yml
-    ollama entrypoint sizing OLLAMA_NUM_PARALLEL, so the backend never sends
-    more concurrent verdicts than the server has slots (extras would just
-    queue server-side). /proc/meminfo shows the whole VM/host total, the same
-    number the ollama container sees."""
+    """Concurrent mapping calls. Auto (-1) uses the same >= 10 GiB threshold as
+    the CPU profile's OLLAMA_NUM_PARALLEL sizing, so the backend never sends
+    more concurrent verdicts than the server has slots."""
     n = settings.map_workers
     if n > 0:
         return n
@@ -107,12 +96,11 @@ def _salvage_truncated_json(content: str) -> dict | None:
     """Best-effort parse of a response cut off at the num_predict cap.
 
     Grammar-constrained decoding guarantees `content` is a prefix of valid
-    JSON, so the complete part is recoverable: re-parse at successively
-    earlier value boundaries (positions outside string literals, so quotes
-    and braces inside generated text can't fool the cut) with the containers
-    still open at that point closed. The truncated tail item is dropped —
-    for mapping verdicts its half quote would fail the evidence check anyway.
-    Returns None if nothing parseable remains (caller re-raises the original).
+    JSON, so the complete part is recoverable: re-parse at successively earlier
+    value boundaries (positions outside string literals, so quotes and braces
+    in generated text can't fool the cut) with the containers open at that
+    point closed. The truncated tail item is dropped. None if nothing
+    parseable remains, and the caller re-raises.
     """
     cuts: list[tuple[int, str]] = []  # (cut position, closing suffix)
     stack: list[str] = []
@@ -140,7 +128,7 @@ def _salvage_truncated_json(content: str) -> dict | None:
         try:
             parsed = json.loads(content[:pos] + suffix)
         except json.JSONDecodeError:
-            continue  # cut after an object key etc. — try one boundary earlier
+            continue  # cut after an object key etc. — try an earlier boundary
         if isinstance(parsed, dict):
             return parsed
     return None
@@ -152,7 +140,7 @@ def chat_json(
     client: httpx.Client | None = None,
     system: str | None = None,
 ) -> dict:
-    """One chat turn, response constrained to `response_schema`, parsed to a dict."""
+    """One chat turn, response constrained to `response_schema` and parsed."""
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -184,8 +172,7 @@ def chat_json(
         if salvaged is None:
             raise
         logger.warning(
-            "LLM response hit the %d-token cap mid-JSON (%d chars); "
-            "salvaged the complete prefix",
+            "LLM response hit the %d-token cap mid-JSON (%d chars); salvaged the prefix",
             NUM_PREDICT,
             len(content),
         )

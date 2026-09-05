@@ -30,6 +30,10 @@ class ReportGroundTruth:
     pdf_glob: str      # glob under /data/uploads locating the source PDF
     core: dict[str, str]
     acceptable: dict[str, str]
+    # Strip the report's own ATT&CK table before ingest (app/eval/deleak.py).
+    # Opt-in: production ingest keeps citations deliberately, and acme-pentest's
+    # documented results depend on its cited-id findings table.
+    deleak: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +317,153 @@ _OPENSLOP_ACCEPTABLE: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Confluence Exploit Leads to LockBit Ransomware (The DFIR Report, 21) — REAL report, EXTERNAL ground truth.
+# Labels are DFIR's own published ATT&CK table transcribed verbatim (v19.1;
+# all ids validated against the bundled KB), not a reading of the narrative —
+# this is the registry's only non-circular reference. Chosen by rank-stratified
+# sampling over the 10-report corpus (0.762, stratum 1 of 3 (upper)), not by result.
+# `deleak=True`: the report ends with that same table, so it is stripped before
+# ingest — otherwise the harness measures table-reading, not mapping (measured
+# 2026-09-02: leaving it in inflates corpus exact recall 0.549 -> 0.584).
+# ---------------------------------------------------------------------------
+
+_DFIR_LOCKBIT_CORE: dict[str, str] = {
+    "T1003.001": "DFIR published table · Credential Access · LSASS Memory",
+    "T1016": "DFIR published table · Discovery · System Network Configuration Discovery",
+    "T1018": "DFIR published table · Discovery · Remote System Discovery",
+    "T1021.001": "DFIR published table · Lateral Movement · Remote Desktop Protocol",
+    "T1033": "DFIR published table · Discovery · System Owner/User Discovery",
+    "T1046": "DFIR published table · Discovery · Network Service Discovery",
+    "T1057": "DFIR published table · Discovery · Process Discovery",
+    "T1059.001": "DFIR published table · Execution · PowerShell",
+    "T1059.003": "DFIR published table · Execution · Windows Command Shell",
+    "T1072": "DFIR published table · Execution · Software Deployment Tools",
+    "T1078.003": "analyst addition, NOT in DFIR's published table · Persistence · Local Accounts",
+    "T1105": "DFIR published table · Command and Control · Ingress Tool Transfer",
+    "T1136": "DFIR published table · Persistence · Create Account",
+    "T1190": "DFIR published table · Initial Access · Exploit Public-Facing Application",
+    "T1218.005": "DFIR published table · Stealth · Mshta",
+    "T1219": "DFIR published table · Command and Control · Remote Access Tools",
+    "T1486": "DFIR published table · Impact · Data Encrypted for Impact",
+    "T1543.003": "DFIR published table · Persistence · Windows Service",
+    "T1552.001": "DFIR published table · Credential Access · Credentials In Files",
+    "T1567.002": "DFIR published table · Exfiltration · Exfiltration to Cloud Storage",
+    "T1685.005": "DFIR published table · Defense Impairment · Clear Windows Event Logs",
+}
+
+_DFIR_LOCKBIT_ACCEPTABLE: dict[str, str] = {
+    "T1003": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1021": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1059": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1078": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1218": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1543": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1552": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1567": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1685": "parent of a mapped sub-technique — emitted by parent promotion",
+}
+
+
+# ---------------------------------------------------------------------------
+# Hide Your RDP: Password Spray Leads to RansomHub (The DFIR Report, 29) — REAL report, EXTERNAL ground truth.
+# Labels are DFIR's own published ATT&CK table transcribed verbatim (v19.1;
+# all ids validated against the bundled KB), not a reading of the narrative —
+# this is the registry's only non-circular reference. Chosen by rank-stratified
+# sampling over the 10-report corpus (0.586, stratum 2 of 3 (middle)), not by result.
+# `deleak=True`: the report ends with that same table, so it is stripped before
+# ingest — otherwise the harness measures table-reading, not mapping (measured
+# 2026-09-02: leaving it in inflates corpus exact recall 0.549 -> 0.584).
+# ---------------------------------------------------------------------------
+
+_DFIR_RANSOMHUB_CORE: dict[str, str] = {
+    "T1003.001": "DFIR published table · Credential Access · LSASS Memory",
+    "T1003.006": "DFIR published table · Credential Access · DCSync",
+    "T1016": "DFIR published table · Discovery · System Network Configuration Discovery",
+    "T1018": "DFIR published table · Discovery · Remote System Discovery",
+    "T1021.001": "DFIR published table · Lateral Movement · Remote Desktop Protocol",
+    "T1021.002": "analyst addition, NOT in DFIR's published table · Lateral Movement · SMB/Windows Admin Shares",
+    "T1046": "DFIR published table · Discovery · Network Service Discovery",
+    "T1048": "DFIR published table · Exfiltration · Exfiltration Over Alternative Protocol",
+    "T1057": "DFIR published table · Discovery · Process Discovery",
+    "T1059.001": "DFIR published table · Execution · PowerShell",
+    "T1059.003": "DFIR published table · Execution · Windows Command Shell",
+    "T1059.005": "DFIR published table · Execution · Visual Basic",
+    "T1069.001": "DFIR published table · Discovery · Local Groups",
+    "T1069.002": "DFIR published table · Discovery · Domain Groups",
+    "T1070": "DFIR published table · Stealth · Indicator Removal",
+    "T1078": "DFIR published table · Initial Access · Valid Accounts",
+    "T1083": "DFIR published table · Discovery · File and Directory Discovery",
+    "T1087.001": "DFIR published table · Discovery · Local Account",
+    "T1087.002": "DFIR published table · Discovery · Domain Account",
+    "T1110.003": "DFIR published table · Credential Access · Password Spraying",
+    "T1133": "DFIR published table · Initial Access · External Remote Services",
+    "T1219": "DFIR published table · Command and Control · Remote Access Tools",
+    "T1222": "DFIR published table · Defense Impairment · File and Directory Permissions Modification",
+    "T1482": "DFIR published table · Discovery · Domain Trust Discovery",
+    "T1486": "DFIR published table · Impact · Data Encrypted for Impact",
+    "T1490": "DFIR published table · Impact · Inhibit System Recovery",
+    "T1543.003": "DFIR published table · Persistence · Windows Service",
+    "T1570": "DFIR published table · Lateral Movement · Lateral Tool Transfer",
+    "T1685.005": "DFIR published table · Defense Impairment · Clear Windows Event Logs",
+}
+
+_DFIR_RANSOMHUB_ACCEPTABLE: dict[str, str] = {
+    "T1003": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1021": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1059": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1069": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1087": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1110": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1543": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1685": "parent of a mapped sub-technique — emitted by parent promotion",
+}
+
+
+# ---------------------------------------------------------------------------
+# BengalSEO Part 1 (The DFIR Report, 18) — REAL report, EXTERNAL ground truth.
+# Labels are DFIR's own published ATT&CK table transcribed verbatim (v19.1;
+# all ids validated against the bundled KB), not a reading of the narrative —
+# this is the registry's only non-circular reference. Chosen by rank-stratified
+# sampling over the 10-report corpus (0.333, stratum 3 of 3 (lower)), not by result.
+# `deleak=True`: the report ends with that same table, so it is stripped before
+# ingest — otherwise the harness measures table-reading, not mapping (measured
+# 2026-09-02: leaving it in inflates corpus exact recall 0.549 -> 0.584).
+# ---------------------------------------------------------------------------
+
+_DFIR_BENGALSEO_CORE: dict[str, str] = {
+    "T1008": "DFIR published table · Command and Control · Fallback Channels",
+    "T1027.013": "DFIR published table · Stealth · Encrypted/Encoded File",
+    "T1027.014": "DFIR published table · Stealth · Polymorphic Code",
+    "T1036.008": "DFIR published table · Stealth · Masquerade File Type",
+    "T1053.005": "DFIR published table · Privilege Escalation · Scheduled Task",
+    "T1059.001": "DFIR published table · Execution · PowerShell",
+    "T1059.003": "DFIR published table · Execution · Windows Command Shell",
+    "T1059.005": "DFIR published table · Execution · Visual Basic",
+    "T1059.007": "DFIR published table · Execution · JavaScript",
+    "T1071.001": "DFIR published table · Command and Control · Web Protocols",
+    "T1104": "DFIR published table · Command and Control · Multi-Stage Channels",
+    "T1189": "DFIR published table · Initial Access · Drive-by Compromise",
+    "T1496.001": "DFIR published table · Impact · Compute Hijacking",
+    "T1497": "DFIR published table · Stealth · Virtualization/Sandbox Evasion",
+    "T1583.001": "DFIR published table · Resource Development · Domains",
+    "T1583.006": "DFIR published table · Resource Development · Web Services",
+    "T1608.006": "DFIR published table · Resource Development · SEO Poisoning",
+    "T1657": "DFIR published table · Impact · Financial Theft",
+}
+
+_DFIR_BENGALSEO_ACCEPTABLE: dict[str, str] = {
+    "T1027": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1036": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1053": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1059": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1071": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1496": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1583": "parent of a mapped sub-technique — emitted by parent promotion",
+    "T1608": "parent of a mapped sub-technique — emitted by parent promotion",
+}
+
+
 REPORTS: dict[str, ReportGroundTruth] = {
     "meridian-grove": ReportGroundTruth(
         name="Meridian Grove",
@@ -337,6 +488,27 @@ REPORTS: dict[str, ReportGroundTruth] = {
         pdf_glob="/data/uploads/*sample_pentest.pdf",
         core=_PENTEST_CORE,
         acceptable=_PENTEST_ACCEPTABLE,
+    ),
+    "dfir-confluence-lockbit": ReportGroundTruth(
+        name="Confluence Exploit Leads to LockBit Ransomware",
+        pdf_glob="/data/dfir_reports/dfir-2025-02-24-confluence-exploit-leads-to-lockbit-ransomware.pdf",
+        core=_DFIR_LOCKBIT_CORE,
+        acceptable=_DFIR_LOCKBIT_ACCEPTABLE,
+        deleak=True,
+    ),
+    "dfir-rdp-ransomhub": ReportGroundTruth(
+        name="Hide Your RDP: Password Spray Leads to RansomHub",
+        pdf_glob="/data/dfir_reports/dfir-2025-06-30-hide-your-rdp-password-spray-leads-to-ransomhub-deployment.pdf",
+        core=_DFIR_RANSOMHUB_CORE,
+        acceptable=_DFIR_RANSOMHUB_ACCEPTABLE,
+        deleak=True,
+    ),
+    "dfir-bengalseo": ReportGroundTruth(
+        name="BengalSEO Part 1",
+        pdf_glob="/data/dfir_reports/dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation.pdf",
+        core=_DFIR_BENGALSEO_CORE,
+        acceptable=_DFIR_BENGALSEO_ACCEPTABLE,
+        deleak=True,
     ),
 }
 

@@ -1,3 +1,4 @@
+import logging
 import threading
 from contextlib import asynccontextmanager
 
@@ -11,21 +12,14 @@ from app.core import warmup
 from app.core.config import settings
 from app.core.llm import warm_chat_model
 
+logging.basicConfig(level=logging.INFO)
+
 
 def _warm_models() -> None:
-    """Load both Ollama models up front so the first upload/mapping of a
-    session runs at warm-model speed — the cold cost (CUDA init + model load,
-    ~40s on first GPU use after a container start) is paid here, during
-    startup, instead. Sequential, chat model first: it's the big one (~7 GB),
-    and the small embed model fits in the VRAM left over — loading in the
-    other order ends with chat evicting embed. With OLLAMA_KEEP_ALIVE=-1
-    (docker-compose.yml) they then stay resident. Errors are ignored — real
-    requests surface them with proper messages. Progress is reported into
-    app.core.warmup so the UI can show "GPU being set up / LLM warming up"
-    if an upload races this. Ready is only marked once *both* models are
-    warm: an ingest racing this thread blocks on the embed model too (its
-    load queues behind the chat model's), and marking ready early made the
-    UI's warm-up note vanish while ingest was still stalled on that queue."""
+    """Load both Ollama models at startup so the first run of a session pays
+    warm-model latency. Chat model first: it is the big one, and loading the
+    small embed model first only gets it evicted. Ready is marked once *both*
+    are warm — an ingest racing this thread queues behind the chat load."""
     warmup.mark_loading()
     try:
         warm_chat_model()
@@ -42,20 +36,22 @@ def _warm_models() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     threading.Thread(target=_warm_models, daemon=True).start()
-    # Instant no-op once the collection is populated; on a fresh volume it
-    # restores the bundled pre-embedded seed, so `docker compose up` alone
-    # yields a working KB (retrieval divides by the KB size — see bm25.py).
+    # No-op once the collection is populated; on a fresh volume it restores the
+    # bundled pre-embedded seed, so `docker compose up` alone yields a usable KB.
     build_kb()
     yield
 
 
 app = FastAPI(title="TFM ATT&CK Mapper", lifespan=lifespan)
 
+# The API is unauthenticated by design (single-user, local-only). Keep the
+# allowed origins to the frontend dev server; the deployment compose file puts
+# Caddy with HTTP Basic Auth in front and serves both same-origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type"],
 )
 
 app.include_router(ingest.router, prefix="/api")

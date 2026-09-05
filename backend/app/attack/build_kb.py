@@ -12,14 +12,14 @@ from app.attack.techniques import Technique, load_techniques
 from app.core.chroma import COSINE_SPACE, get_chroma_client
 from app.core.config import settings
 
-# Bundled, pre-embedded copy of the KB (committed to git) so a fresh checkout
-# can be indexed instantly without a local Ollama model or network access.
-# Regenerate it with `--refresh` after a MITRE ATT&CK release update.
+# Bundled, pre-embedded copy of the KB (committed) so a fresh checkout indexes
+# instantly with no Ollama model and no network. Regenerate with --refresh
+# after a MITRE ATT&CK release update.
 PREBUILT_KB_PATH = os.path.join(os.path.dirname(__file__), "prebuilt_kb", "attack_techniques.json")
-EMBED_WORKERS = 4  # matches the ollama service's OLLAMA_NUM_PARALLEL in docker-compose.yml
+EMBED_WORKERS = 4
 EMBED_TIMEOUT = 120.0
 EMBED_RETRIES = 3
-EMBED_BATCH_SIZE = 25  # techniques upserted into Chroma per batch, so a crash keeps prior progress
+EMBED_BATCH_SIZE = 25  # upserted per batch, so a crash keeps prior progress
 
 
 def _load_prebuilt_kb(path: str) -> dict | None:
@@ -56,10 +56,9 @@ def _embed_with_retry(client: httpx.Client, text: str) -> list[float]:
 
 
 def _embed_and_index(techniques: list[Technique], collection) -> None:
-    """Embed techniques concurrently and upsert them into Chroma in small batches,
-    so an interrupted run keeps whatever already completed instead of losing it all.
-    On failure, cancels not-yet-started work instead of draining the whole queue.
-    """
+    """Embed concurrently and upsert in small batches, so an interrupted run
+    keeps what already completed. A failure cancels not-yet-started work rather
+    than draining the whole queue."""
     total = len(techniques)
     batch: list[Technique] = []
     batch_embeddings: list[list[float]] = []
@@ -118,11 +117,8 @@ def build_kb(refresh: bool = False) -> None:
     client = get_chroma_client()
     collection = client.get_or_create_collection(settings.attack_collection, metadata=COSINE_SPACE)
 
-    # Migrate a collection built before the cosine-space change: Chroma can't
-    # change a collection's distance function in place, so drop and rebuild.
-    # The stored vectors themselves are reusable as-is (cosine ignores the
-    # magnitude difference between legacy-unnormalized and normalized vectors),
-    # but on the seed path a rebuild is instant anyway.
+    # Chroma cannot change a collection's distance function in place, so a
+    # pre-cosine collection is dropped and rebuilt (instant on the seed path).
     if (collection.metadata or {}).get("hnsw:space", "l2") != "cosine":
         print(
             f"Collection '{settings.attack_collection}' uses pre-migration L2 distance — "

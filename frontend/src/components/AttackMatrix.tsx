@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   sortSubtechniques,
   sortTechniques,
@@ -122,23 +122,21 @@ function useLayerTransitions(layer: LayerState): { transitions: Record<string, C
 interface AttackMatrixProps {
   catalog: Catalog;
   layer: LayerState;
+  /** Editable when provided: cells open the score/comment editor and the
+   * toolbar and tactic hide-menus appear. Without it, cells that are in the
+   * layer open a read-only evidence popover instead. */
   onLayerChange?: (next: LayerState) => void;
-  compact?: boolean;
-  /** Fit-to-width layout: columns share the available width equally so all
-   * tactics are visible with no horizontal scroll (this is the only layout
-   * rendered anywhere since the wide grid was retired). Layout only — the
-   * toolbar, tactic hide-menus and cell editor follow `onLayerChange`. */
-  overview?: boolean;
   /** Vertical order of techniques within each tactic column. */
   sortBy?: TechniqueSort;
 }
 
+/** The matrix grid, laid out fit-to-width: tactic columns share the available
+ * width equally, so all of them are visible with no horizontal scroll and only
+ * the vertical axis scrolls. */
 export default function AttackMatrix({
   catalog,
   layer,
   onLayerChange,
-  compact = false,
-  overview = false,
   sortBy = "default",
 }: AttackMatrixProps) {
   const { theme } = useHeatTheme();
@@ -149,58 +147,14 @@ export default function AttackMatrix({
   const [selected, setSelected] = useState<string | null>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [tacticMenu, setTacticMenu] = useState<{ id: string; name: string; rect: DOMRect } | null>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-  const gridRef = useRef<HTMLDivElement>(null);
   const editable = Boolean(onLayerChange);
   const normalizedQuery = query.trim().toLowerCase();
   const mappedCount = Object.keys(layer).length;
   const { transitions, displayLayer } = useLayerTransitions(layer);
 
-  // Side-scroll arrows for the full matrix (the overview preview fits its
-  // full width with no side-scroll — see .attack-matrix--overview).
-  const syncScrollArrows = useCallback(() => {
-    const el = gridRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    setCanScrollLeft(el.scrollLeft > 1);
-    setCanScrollRight(el.scrollLeft < maxScroll - 1);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (overview) return;
-    syncScrollArrows();
-  }, [overview, syncScrollArrows, hiddenTactics, normalizedQuery]);
-
-  useEffect(() => {
-    if (overview) return;
-    const el = gridRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", syncScrollArrows, { passive: true });
-    const ro = new ResizeObserver(syncScrollArrows);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", syncScrollArrows);
-      ro.disconnect();
-    };
-  }, [overview, syncScrollArrows]);
-
-  // Scroll to an explicit, clamped target rather than a relative scrollBy —
-  // clicking a few times fast can't overshoot past the last column and
-  // "leave the matrix behind" this way, since every click recomputes the
-  // bound fresh instead of compounding on top of a possibly still-animating
-  // position.
-  function pageGrid(direction: 1 | -1) {
-    const el = gridRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    const target = Math.max(0, Math.min(maxScroll, el.scrollLeft + direction * el.clientWidth * 0.8));
-    el.scrollTo({ left: target, behavior: "smooth" });
-  }
-
   // Close any open popover when anything scrolls (the anchored cell moves).
   // Capture phase because scroll events don't bubble — this catches the grid's
-  // own scroll and the overview preview's wrapper scroll alike. Scrolls that
+  // own scroll and its wrapper's scroll alike. Scrolls that
   // originate *inside* the popover (the evidence comment has its own
   // scrollbar) don't move the anchor, so they must not close it.
   useEffect(() => {
@@ -277,9 +231,7 @@ export default function AttackMatrix({
   }
 
   return (
-    <div
-      className={`attack-matrix${compact ? " attack-matrix--compact" : ""}${overview ? " attack-matrix--overview" : ""}`}
-    >
+    <div className="attack-matrix attack-matrix--overview">
       {editable && (
       <div className="attack-matrix__toolbar">
         <input
@@ -329,7 +281,7 @@ export default function AttackMatrix({
       </div>
       )}
 
-      <div className="attack-matrix__grid" ref={gridRef}>
+      <div className="attack-matrix__grid">
         {visibleTactics.map((tactic) => {
           const visible = tactic.techniques.filter(
             (t) => matchesQuery(t, normalizedQuery) || t.subtechniques.some((s) => matchesQuery(s, normalizedQuery))
@@ -376,27 +328,6 @@ export default function AttackMatrix({
           );
         })}
       </div>
-
-      {!overview && (
-        <>
-          <button
-            className="attack-matrix__arrow attack-matrix__arrow--left"
-            onClick={() => pageGrid(-1)}
-            disabled={!canScrollLeft}
-            aria-label="Scroll matrix left"
-          >
-            ‹
-          </button>
-          <button
-            className="attack-matrix__arrow attack-matrix__arrow--right"
-            onClick={() => pageGrid(1)}
-            disabled={!canScrollRight}
-            aria-label="Scroll matrix right"
-          >
-            ›
-          </button>
-        </>
-      )}
 
       {tacticMenu && (
         <AnchoredPopover anchorRect={tacticMenu.rect} onClose={() => setTacticMenu(null)} width={180}>
@@ -578,13 +509,12 @@ function TechniqueCell({
     ? { background: scoreToColor(entry.score, theme), color: readableTextColor(entry.score, theme) }
     : undefined;
 
-  // Primary click: when editable, every cell (parents included) opens the editor —
-  // expand/collapse lives on the caret button. When not editable (dashboard run
-  // view / preview), a cell that's in the layer opens the read-only evidence
-  // popover; otherwise clicking a parent expands it so sub-techniques are
-  // still viewable.
-  function handleClick(e: MouseEvent<HTMLDivElement>) {
-    if (editable || entry) onOpenCell(id, e.currentTarget);
+  // When editable, every cell (parents included) opens the editor — expanding
+  // lives on the caret button. When read-only, a cell that's in the layer opens
+  // the evidence popover; otherwise clicking a parent expands it, so
+  // sub-techniques stay viewable there too.
+  function activate(el: HTMLElement) {
+    if (editable || entry) onOpenCell(id, el);
     else if (hasSubs) onToggleExpand!();
   }
 
@@ -595,17 +525,15 @@ function TechniqueCell({
       className={classes}
       style={scoredStyle}
       title={`${id} · ${name}${entry ? ` — score ${entry.score}` : ""}${entry?.flagged ? " (flagged for review)" : ""}`}
-      onClick={interactive ? handleClick : undefined}
+      onClick={interactive ? (e) => activate(e.currentTarget) : undefined}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : -1}
       onKeyDown={
         interactive
           ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                if (editable || entry) onOpenCell(id, e.currentTarget);
-                else if (hasSubs) onToggleExpand!();
-              }
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              activate(e.currentTarget);
             }
           : undefined
       }
@@ -681,7 +609,7 @@ function AnchoredPopover({
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
-    function onDown(e: globalThis.MouseEvent) {
+    function onDown(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     }
     document.addEventListener("keydown", onKey);

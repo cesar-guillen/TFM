@@ -34,3 +34,22 @@ data/cycle*_*
 # Cross-encoder reranker model files (fetched, not committed — see
 # app/retrieval/rerank.py and docs/grouped-tuning-log.md cycle 12)
 data/reranker/
+data/aptnotes/
+
+# Fetched DFIR Report articles rendered to PDF (data/fetch_dfir_report.py)
+data/dfir_reports/
+
+# Markdown extracted from those PDFs, used to read their own MITRE ATT&CK sections
+data/dfir_md/
+
+# Redacted copies of the DFIR Report PDFs (answer-key page removed, for manual
+# UI testing) — derived from the same copyrighted third-party PDFs above.
+data/dfir_reports_clean/
+
+# Raw stdout transcripts of harness measurement runs — the curated findings
+# from these live in CLAUDE.md prose; the transcripts themselves are scratch.
+data/dfir_out*.log
+
+# Root-owned scratch diagnostic dump (app.mapping.mapper verification-judge
+# investigation) — a one-off debugging artifact, not a checked-in deliverable.
+data/verify_diag_rows.json

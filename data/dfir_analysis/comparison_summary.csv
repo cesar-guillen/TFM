@@ -1,0 +1,11 @@
+report,their_total,their_in_kb,ours_total,exact_tp,exact_missed,extra,family_tp,exact_recall,family_recall
+dfir-2025-02-24-confluence-exploit-leads-to-lockbit-ransomware,21,21,61,16,5,45,17,0.762,0.81
+dfir-2025-03-31-fake-zoom-ends-in-blacksuit-ransomware,35,35,70,15,20,55,19,0.429,0.543
+dfir-2025-05-19-another-confluence-bites-the-dust-falling-to-elpaco-team-ransomware,24,24,90,19,5,71,20,0.792,0.833
+dfir-2025-06-30-hide-your-rdp-password-spray-leads-to-ransomhub-deployment,29,29,54,17,12,37,19,0.586,0.655
+dfir-2025-09-08-blurring-the-lines-intrusion-shows-connection-with-three-major-ransomw,39,39,94,20,19,74,23,0.513,0.59
+dfir-2025-09-29-from-a-single-click-how-lunar-spider-enabled-a-near-two-month-intrusio,45,45,102,31,14,71,39,0.689,0.867
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,21,21,60,13,8,47,14,0.619,0.667
+dfir-2026-02-23-apache-activemq-exploit-leads-to-lockbit-ransomware,15,15,46,5,10,41,6,0.333,0.4
+dfir-2026-06-29-from-bing-search-to-ransomware-bumblebee-and-adaptixc2-deliver-akira,39,39,99,25,14,74,28,0.641,0.718
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,18,18,38,6,12,32,10,0.333,0.556

@@ -1,12 +1,11 @@
-"""Tracks whether the Ollama chat model is loaded, and on which device — so the
-UI can tell the user "the GPU is being set up / the LLM is warming up" instead
-of showing a stalled progress bar, and can word it correctly for the hardware
-actually in use (a CPU-only machine must never see "GPU").
+"""Tracks whether the Ollama chat model is loaded, and on which device, so the
+UI can say "the GPU is being set up" / "loading the LLM (CPU mode)" instead of
+showing a stalled progress bar — and never shows GPU wording on a CPU-only
+machine.
 
-The device can't be asked for directly: Ollama has no capability endpoint, but
-/api/ps reports `size_vram` per *loaded* model, so gpu-vs-cpu is derivable the
-moment any model (even just the small embed model) is resident. Until then it
-stays None and the frontend uses a device-neutral wording.
+Ollama has no capability endpoint, but /api/ps reports `size_vram` per loaded
+model, so the device is derivable as soon as anything is resident. Until then
+it stays None and the frontend words it neutrally.
 """
 
 import threading
@@ -19,11 +18,11 @@ from app.core.config import settings
 Status = Literal["unknown", "loading", "ready", "unavailable"]
 Device = Literal["gpu", "cpu"] | None
 
+PROBE_TIMEOUT = 2.0
+
 _lock = threading.Lock()
 _status: Status = "unknown"
 _device: Device = None
-
-PROBE_TIMEOUT = 2.0
 
 
 def mark_loading() -> None:
@@ -53,8 +52,8 @@ def _loaded_models() -> list[dict]:
 
 
 def detect_device() -> Device:
-    """gpu/cpu judged from whatever models are currently loaded; None if
-    nothing is loaded yet (or Ollama is unreachable) — i.e. not yet knowable."""
+    """gpu/cpu judged from the currently loaded models; None while nothing is
+    loaded (or Ollama is unreachable), i.e. not yet knowable."""
     try:
         models = _loaded_models()
     except Exception:
@@ -65,8 +64,8 @@ def detect_device() -> Device:
 
 
 def is_chat_model_loaded() -> bool:
-    """Whether the mapping model is resident right now. False on any probe
-    failure — callers then warm it, which surfaces the real error properly."""
+    """Whether the mapping model is resident. False on any probe failure —
+    callers then warm it, which surfaces the real error properly."""
     try:
         models = _loaded_models()
     except Exception:
@@ -78,9 +77,8 @@ def is_chat_model_loaded() -> bool:
 
 
 def get_state() -> dict:
-    """Current warm-up state for the /api/warmup endpoint. While loading, the
-    device may become knowable mid-flight (the embed model loads first and
-    already betrays gpu-vs-cpu), so probe lazily until it's cached."""
+    """Warm-up state for GET /api/warmup. The device can become knowable
+    mid-load (the embed model lands first), so probe until it is cached."""
     global _device
     with _lock:
         status, device = _status, _device

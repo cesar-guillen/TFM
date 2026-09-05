@@ -1,6 +1,20 @@
 services:
   backend:
     build: ./backend
+    # The backend parses untrusted PDFs, so it drops every Linux capability but
+    # one and cannot gain privileges. The exception is DAC_OVERRIDE: ./data is a
+    # bind mount owned by the host user, and root without DAC_OVERRIDE gets no
+    # permission bypass, so every write the pipeline makes (uploads, extracted
+    # markdown, chroma, saved layers) fails with EACCES — uploads 500'd on
+    # _save_upload until this was added back (2026-08-31).
+    # The stronger fix is to stop running as root at all (user: "1000:1000",
+    # matching the host owner of ./data) and keep ALL dropped; see CLAUDE.md.
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
@@ -32,6 +46,19 @@ services:
 
   frontend:
     build: ./frontend
+    cap_drop:
+      - ALL
+    # DAC_OVERRIDE is the one capability this service genuinely needs: the
+    # start-up `npm install` rewrites package-lock.json inside the ./frontend
+    # bind mount, which is owned by the host user, and root without
+    # DAC_OVERRIDE gets no permission bypass (EACCES, container exits 243).
+    # It costs nothing against the threat model — the frontend never touches
+    # uploaded PDFs; the PDF-parser sandboxing cap_drop exists for is the
+    # backend's, and that service keeps ALL dropped.
+    cap_add:
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:

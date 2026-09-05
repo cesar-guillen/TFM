@@ -5,6 +5,11 @@ pydantic-settings==2.7.1
 pymupdf==1.28.0
 pymupdf4llm==1.28.0
 
+# OCR for embedded screenshots (app.ingest.ocr) — wraps the tesseract-ocr
+# system package installed in the Dockerfile. Pillow itself is already a
+# transitive dependency of pymupdf, no extra entry needed for it.
+pytesseract==0.3.13
+
 # chromadb + httpx: ATT&CK KB build/query (app.attack), report chunk indexing
 # (app.ingest.indexing) and dense retrieval (app.retrieval)
 # rank_bm25: BM25 keyword half of hybrid retrieval (app.retrieval.bm25)

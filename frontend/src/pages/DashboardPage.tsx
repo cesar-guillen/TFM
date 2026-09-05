@@ -20,10 +20,10 @@ import ProgressBubble from "../components/ProgressBubble";
 import ProgressPanel from "../components/ProgressPanel";
 import UploadPanel from "../components/UploadPanel";
 import { useAttackData } from "../hooks/useAttackData";
-import { useIngestJob } from "../hooks/useIngestJob";
-import { useMappingJob } from "../hooks/useMappingJob";
+import { useIngestJob, useMappingJob } from "../hooks/useJobPolling";
 import { layerToState } from "../types/attack";
 import { clearActiveRun, loadActiveRun, saveActiveRun } from "../utils/activeRun";
+import { readStored, writeStored } from "../utils/storage";
 import { formatDuration } from "../utils/format";
 
 /** The main dashboard is the matrix library: upload a new report, or open,
@@ -31,11 +31,10 @@ import { formatDuration } from "../utils/format";
  * processed it switches to the live run view (matrix preview filling in +
  * floating progress bubble), and back to the library afterwards. */
 export default function DashboardPage() {
-  // Rehydrate an in-flight run left behind by a tab close / reload / navigation
-  // away (read once on mount). The backend job survives keyed by report_id, so
-  // resuming is just a matter of re-adopting the id and letting the polling
-  // hooks pick it back up; the real status overwrites this "parsing" placeholder
-  // on the first poll. See utils/activeRun.
+  // Rehydrate an in-flight run left behind by a tab close or reload: the
+  // backend job survives keyed by report_id, so resuming just means re-adopting
+  // the id and letting the polling hooks pick it back up. The first poll
+  // overwrites this "parsing" placeholder. See utils/activeRun.
   const persistedRun = useMemo(() => loadActiveRun(), []);
   // The header logo navigates to "/" with `{ home: true }` so it can force the
   // library view even when the run view already lives at "/" (same route, so
@@ -53,36 +52,49 @@ export default function DashboardPage() {
   // sticks. Balanced ("demote") is the recommended default — see
   // RECOMMENDED_VERIFY in UploadPanel.tsx.
   const [verifyMode, setVerifyMode] = useState<VerifyMode>(() => {
-    const saved = localStorage.getItem("tfm-verify-mode");
+    const saved = readStored("tfm-verify-mode");
     return saved === "off" || saved === "drop" ? saved : "demote";
   });
   function handleVerifyModeChange(value: VerifyMode) {
     setVerifyMode(value);
-    localStorage.setItem("tfm-verify-mode", value);
+    writeStored("tfm-verify-mode", value);
   }
   // Verdict architecture (grouped vs individual technique judging), same
   // ownership pattern as verifyMode.
   const [verdictMode, setVerdictMode] = useState<VerdictMode>(() =>
-    localStorage.getItem("tfm-verdict-mode") === "independent" ? "independent" : "menu",
+    readStored("tfm-verdict-mode") === "independent" ? "independent" : "menu",
   );
   function handleVerdictModeChange(value: VerdictMode) {
     setVerdictMode(value);
-    localStorage.setItem("tfm-verdict-mode", value);
+    writeStored("tfm-verdict-mode", value);
   }
   // Report kind (incident vs pentest), same ownership pattern — picked in the
   // upload dialog, applied when the mapping run starts. Persisting the last
   // choice also covers a resumed session's auto-started mapping.
   const [reportType, setReportType] = useState<ReportType>(() =>
-    localStorage.getItem("tfm-report-type") === "pentest" ? "pentest" : "incident",
+    readStored("tfm-report-type") === "pentest" ? "pentest" : "incident",
   );
   function handleReportTypeChange(value: ReportType) {
     setReportType(value);
-    localStorage.setItem("tfm-report-type", value);
+    writeStored("tfm-report-type", value);
+  }
+  // OCR for embedded screenshots (console output, dashboards, sandbox logs) —
+  // same ownership pattern as the above. Defaults on; measured effect is
+  // genre-dependent (clear recall win on log/terminal-heavy reports, noisier
+  // on UI-screenshot-heavy ones), so unlike the others this has no
+  // recommended value — see CLAUDE.md's DFIR OCR evaluation notes.
+  const [ocrEnabled, setOcrEnabled] = useState<boolean>(
+    () => readStored("tfm-ocr-enabled") !== "off",
+  );
+  function handleOcrEnabledChange(value: boolean) {
+    setOcrEnabled(value);
+    writeStored("tfm-ocr-enabled", value ? "on" : "off");
   }
   const [mappingReportId, setMappingReportId] = useState<string | null>(
     persistedRun?.mappingStarted ? persistedRun.reportId : null,
   );
   const [mapAttempt, setMapAttempt] = useState(0);
+  const [runError, setRunError] = useState<string | null>(null);
   const [startingMap, setStartingMap] = useState(false);
   const [showDoneToast, setShowDoneToast] = useState(false);
   // Which screen is showing. Decoupled from `started` on purpose: going to the
@@ -130,6 +142,7 @@ export default function DashboardPage() {
   async function handleGenerate() {
     if (!started) return;
     setStartingMap(true);
+    setRunError(null);
     try {
       await startMapping(started.report_id, {
         verify_mode: verifyMode,
@@ -142,8 +155,9 @@ export default function DashboardPage() {
       saveActiveRun({ reportId: started.report_id, filename: started.filename, mappingStarted: true });
       setMapAttempt((a) => a + 1); // restart polling even if the report id didn't change (retry)
     } catch (e) {
-      // Surfaced crudely for now; the status endpoint reports job-level errors.
-      alert(e instanceof Error ? e.message : String(e));
+      // Failures once the job is running are reported by the status endpoint;
+      // this only covers not being able to start it.
+      setRunError(e instanceof Error ? e.message : String(e));
     } finally {
       setStartingMap(false);
     }
@@ -287,7 +301,6 @@ export default function DashboardPage() {
             Drop an incident report, pentest result, or security policy PDF to generate its ATT&amp;CK matrix.
           </p>
           <UploadPanel
-            variant="hero"
             onStarted={handleStarted}
             verifyMode={verifyMode}
             onVerifyModeChange={handleVerifyModeChange}
@@ -295,6 +308,8 @@ export default function DashboardPage() {
             onVerdictModeChange={handleVerdictModeChange}
             reportType={reportType}
             onReportTypeChange={handleReportTypeChange}
+            ocrEnabled={ocrEnabled}
+            onOcrEnabledChange={handleOcrEnabledChange}
           />
         </section>
 
@@ -407,13 +422,19 @@ export default function DashboardPage() {
   }
 
   // Active run: the matrix fills the page and progress lives in a draggable
-  // floating bubble on top of it, so the user sees the pipeline actually
-  // moving instead of staring at a spinner for the ~100s+ embedding takes.
-  // Scored cells are clickable throughout the run — a read-only popover shows
-  // the technique's evidence as it lands. "All matrices" goes back to the
-  // library (which refetches, so the run that just finished is in it).
+  // floating bubble on top of it, so the user watches the pipeline move rather
+  // than a spinner. Scored cells stay clickable throughout — a read-only
+  // popover shows each technique's evidence as it lands.
   return (
     <div className="dashboard-loaded">
+      {runError && (
+        <div className="matrix-import-error">
+          {runError}
+          <button onClick={() => setRunError(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
       {finished && catalog ? (
         <MatrixWorkspace
           catalog={catalog}

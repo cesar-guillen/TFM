@@ -1,3 +1,12 @@
+"""Hybrid retrieval: which ATT&CK techniques a piece of report text is about.
+
+Up to three halves are fused with reciprocal rank fusion — dense over the whole
+text, dense over its sentence windows, and per-sentence BM25 — because a
+technique evidenced by one sentence inside a chunk about something else is
+invisible to chunk-level retrieval alone. Rank-based fusion is deliberate:
+cosine distances and BM25 scores live on incomparable scales.
+"""
+
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -14,57 +23,86 @@ from app.ingest.sentences import build_windows
 from app.retrieval import rerank
 from app.retrieval.bm25 import bm25_search, bm25_search_sentences
 
-# Candidates each half contributes before fusion. Wider than any final top_k so
-# a technique ranked ~20th by one half can still win overall when another
-# half also ranks it (the typical hybrid case: a keyword hit on a tool name
-# lifting a mid-pack dense candidate).
+# Candidates each half contributes before fusion. Wider than any final top_k,
+# so a technique ranked mid-pack by one half can still win overall when another
+# half also ranks it.
 CANDIDATE_POOL = 30
-# Standard RRF damping constant (Cormack et al.): rank contributions are
-# 1/(60+rank), which keeps a #1 rank from steamrolling everything else.
+
+# RRF damping constant: rank contributions are 1/(60+rank), which stops a
+# single #1 rank from steamrolling everything else.
 RRF_K = 60
-# Each half's strongest candidate is guaranteed a seat in the fused top_k.
-# Plain RRF lets weak two-half agreement outrank strong single-half signal
-# (dense #3 alone scores 1/63 ≈ 0.016 while dense #15 + BM25 #20 agreement
-# scores ≈ 0.026) — measured costing T1014 Rootkit (dense #3, fused #9) and
-# T1490 (BM25 #8) their seats on the Meridian Grove report.
-#
-# Depth 1, not 2 (2026-08-24): reserves are rank-blind, and at depth 2 they
-# were the least productive of the three seat allocators by a wide margin.
-# Measured over all 73 chunks of the three labelled reports (584 seats):
-# window quota 216 seats -> 72 core techniques (33%), fused RRF 160 -> 37
-# (23%), half reserves 208 -> 16 (7.7%) — i.e. a third of the candidate
-# budget spent at a quarter of the quota's hit rate. Rank-blindness is the
-# reason: BM25-only reserved seats have median score 23.3 while the core
-# techniques they displace have median 26.6, so the reserve routinely seats a
-# weaker keyword hit than the one it evicts. Between the quota (top_k//2) and
-# depth-2 reserves (up to 6 ids), fused ranking had almost no seats left to
-# allocate at top_k=8.
+
+# Seats reserved for each half's own top candidate, so strong single-half
+# signal survives a cut that weak two-half agreement would otherwise win.
+# Depth 1, not 2: reserves are rank-blind, and at depth 2 they consumed a third
+# of the candidate budget at a quarter of the window quota's hit rate.
 RESERVE_PER_HALF = 1
 
-# ATT&CK technique ids cited literally in report text (CISA advisories cite
-# inline: "... traffic encryption features. [T1573]"). Neither retrieval half
-# can surface these — KB documents carry names + descriptions, not ids — so
-# they are injected as candidates directly (see _prepend_explicit_ids).
+# ATT&CK ids cited literally in report text ("... encryption features.
+# [T1573]"). Neither retrieval half can surface these — KB documents carry
+# names and descriptions, not ids — so they are injected as candidates.
 ATTACK_ID_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
 
-# Remote-access mechanisms that ARE a technique's name: when the bare token
-# appears in a chunk, the matching sub-technique is injected as a candidate
-# alongside explicitly-cited ids. Measured motivation: "alternating between
-# SSH, RDP, and WinRM sessions" produced a menu that was 100% Kerberos-family
-# — the protocol sentence loses every retrieval half's slot competition to the
-# chunk's dominant topic (rank-pooling tie-breaks favor the majority cluster),
-# leaving textbook lateral movement unmappable. Deliberately tiny and curated:
-# each token names exactly one mechanism with one canonical sub-technique, so
-# injection is near-zero-risk (the verdict stage still judges the evidence).
+# Mechanisms whose bare token IS a technique's name (or its one canonical
+# tool), injected the same way: the sentence otherwise loses every half's slot
+# competition to the chunk's dominant topic. Keep this table tiny — each token
+# must name exactly one mechanism with one canonical (sub-)technique, and must
+# not double as an ordinary English word (that's why "net group"/"net user"/
+# "dir"/"ping" aren't here: single-token matching can't safely disambiguate
+# them, and common words would false-fire on unrelated prose).
+#
+# Discovery entries (added 2026-09-03) target the corpus's single largest
+# retrieval-ceiling gap: a real-report enumeration sentence ("ran net group,
+# whoami, systeminfo, nltest, tasklist...") is itself a packed list, so one
+# command wins the chunk's slot competition and the rest are structurally
+# unreachable — measured on 3 external DFIR Report intrusions, Discovery was
+# 40% of every miss and unreachable in 3/3 (data/dfir_analysis/). Same
+# mechanism as the lateral-movement entries below, applied to the tactic
+# actually costing the most recall on real reports.
 MECHANISM_ALIASES = {
     "ssh": "T1021.004",
     "rdp": "T1021.001",
     "winrm": "T1021.006",
     "vnc": "T1021.005",
+    "whoami": "T1033",
+    "systeminfo": "T1082",
+    "tasklist": "T1057",
+    "netstat": "T1049",
+    "ipconfig": "T1016",
+    "nltest": "T1482",
+    "nmap": "T1046",
+    # SoftPerfect NetScan (added 2026-09-05): a second, distinct tool naming
+    # the same technique — nmap alone missed it on a real report that used
+    # NetScan by name and as `netscan.exe` dozens of times, T1046 never once
+    # offered as a candidate through any other retrieval signal.
+    "netscan": "T1046",
+    "localgroup": "T1069.001",
+    "icacls": "T1222",
+    "dcsync": "T1003.006",
 }
 _MECHANISM_TOKEN_RE = re.compile(r"[a-z0-9]+")
-# Sorts above any fused RRF score (three #1 ranks ≈ 3/(60+1) ≈ 0.049), so
-# chunks with citations also lead the mapper's strongest-first submission.
+
+# Same idea, for mechanisms named by a short PHRASE rather than one token —
+# single-token matching can't express these (MECHANISM_ALIASES' own docstring
+# rules out "net group"/"net user" for exactly this reason: the tokens "net"
+# and "group" are each too common alone to inject safely). A phrase is safe
+# where its constituent words are common but the *sequence* is specific to
+# the mechanism and essentially never appears in unrelated report prose.
+# Added 2026-09-05, same motivation and corpus as the discovery entries above:
+# a real DFIR Report bullet reads "Net - Enumerate user groups, domain
+# accounts, computers, and password policy" — one compressed sentence naming
+# four Discovery techniques via a bare, ambiguous "Net" that no single-token
+# alias can resolve. Deliberately narrow: "user groups" and "computers" stay
+# unaliased from that same sentence (ambiguous local-vs-domain, and "computers"
+# alone is too generic), so this closes part of that gap, not all of it.
+PHRASE_ALIASES = {
+    "domain accounts": "T1087.002",
+    "password policy": "T1201",
+}
+_PHRASE_RES = {re.compile(r"\b" + re.escape(p) + r"\b"): tid for p, tid in PHRASE_ALIASES.items()}
+
+# Above any reachable RRF score, so citation-bearing chunks also lead the
+# mapper's strongest-first submission order.
 EXPLICIT_ID_SCORE = 1.0
 
 
@@ -75,8 +113,13 @@ class TechniqueMatch:
     tactics: list[str]
     url: str
     is_subtechnique: bool
-    score: float  # RRF-fused rank score (higher = better); comparable across queries
-    distance: float | None = None  # best cosine distance from any dense half; None if only BM25 found it
+    score: float  # fused RRF score, higher is better; comparable across queries
+    distance: float | None = None  # best cosine distance; None for BM25-only hits
+
+
+# One half's candidates, best-first: (attack_id, metadata, cosine distance),
+# distance being None for keyword halves.
+Half = list[tuple[str, dict, float | None]]
 
 
 def _match_from_meta(
@@ -93,122 +136,6 @@ def _match_from_meta(
     )
 
 
-# One retrieval half's candidates, best-first: (attack_id, metadata, cosine
-# distance) — distance is None for keyword (BM25) halves.
-Half = list[tuple[str, dict, float | None]]
-
-
-def _fuse(
-    halves: list[Half],
-    top_k: int,
-    window_seats: dict[str, int] | None = None,
-    rerank_windows: list[str] | None = None,
-) -> list[TechniqueMatch]:
-    """Reciprocal Rank Fusion across any number of halves. Rank-based rather
-    than score-based on purpose: cosine distances and BM25 scores live on
-    incomparable scales, and RRF sidesteps normalizing them.
-
-    Two guards against RRF's known pathologies:
-    - deterministic tie-break by attack_id — the old dict-insertion tie-break
-      silently favored whichever half was processed first (measured costing
-      T1566.001, BM25 #2 for its chunk, a coin-flip seat);
-    - RESERVE_PER_HALF seats per half, so a candidate one half is confident
-      about survives the cut even when the other halves don't corroborate.
-
-    `window_seats` (id -> best per-window rank, from _pooled_window_candidates)
-    are seated with *absolute priority*, ahead of fused ordering — a quota, not
-    a reservation. A minority sentence's #1 has a fused score of one lonely
-    half-contribution, so any selection by fused score re-buries it under
-    multi-half consensus (measured: with seats merely added to the reserved
-    set, T1059.001 — window #1 for its sentence — still lost its seat to the
-    chunk's phishing consensus cluster). Deduped across windows the quota is
-    small in practice (windows about the same topic share a #1), and it is
-    capped at half of top_k — table chunks give every row its own window, and
-    an uncapped quota there filled all the seats and evicted strong fused
-    candidates (measured costing T1053.005 its cand#4 seat in the timeline
-    chunk). Over the cap, seats go by per-window rank tier, then fused score.
-    """
-    fused: dict[str, dict] = {}
-    for results in halves:
-        for rank, (attack_id, meta, distance) in enumerate(results, start=1):
-            entry = fused.setdefault(attack_id, {"meta": meta, "score": 0.0, "distance": None})
-            entry["score"] += 1.0 / (RRF_K + rank)
-            if distance is not None and (entry["distance"] is None or distance < entry["distance"]):
-                entry["distance"] = distance
-
-    scores = {a: fused[a]["score"] for a in fused}
-    ranking = sorted(fused, key=lambda a: (-fused[a]["score"], a))
-
-    # Cross-encoder pass over the strongest RERANK_DEPTH candidates (see
-    # app.retrieval.rerank). When it fires, the blended order replaces the pure
-    # RRF order *and* the half reserves are skipped: the reserve exists to stop
-    # RRF burying strong single-half signal, which is precisely what the
-    # cross-encoder now judges directly, and the screened winner (window quota
-    # + blend, no reserve) beat every reserve-bearing variant.
-    ce: dict[str, float] = {}
-    if rerank_windows and rerank.available():
-        head = ranking[: rerank.RERANK_DEPTH]
-        kb = get_attack_collection().get(ids=head, include=["documents"])
-        ce = rerank.rerank_scores(rerank_windows, dict(zip(kb["ids"], kb["documents"])))
-    if ce:
-        ranking = rerank.blended_order(scores, ce)
-
-    seated = sorted(
-        (a for a in (window_seats or {}) if a in fused),
-        key=lambda a: (window_seats[a], -fused[a]["score"], a),
-    )[: top_k // 2]
-    selected = list(seated)
-    pools: tuple = (None,)
-    if not ce:
-        pools = ({a for results in halves for a, _, _ in results[:RESERVE_PER_HALF]}, None)
-    for pool in pools:
-        for attack_id in ranking:
-            if len(selected) >= top_k:
-                break
-            if attack_id not in selected and (pool is None or attack_id in pool):
-                selected.append(attack_id)
-    position = {a: i for i, a in enumerate(ranking)}
-    selected.sort(key=lambda a: position.get(a, len(position)))
-    return [
-        _match_from_meta(a, fused[a]["meta"], fused[a]["score"], fused[a]["distance"])
-        for a in selected
-    ]
-
-
-def _prepend_explicit_ids(
-    text: str, fused: list[TechniqueMatch], top_k: int
-) -> list[TechniqueMatch]:
-    """Put techniques the text cites by id — or names by mechanism token (see
-    MECHANISM_ALIASES) — ahead of the retrieval candidates, keeping the total
-    at top_k so the mapper's prompt budget doesn't grow. Cited ids missing
-    from the KB (deprecated/revoked, typos) just don't come back from the
-    collection and are dropped silently."""
-    if not settings.explicit_ids:
-        return fused
-    cited = sorted({m.group(0).upper() for m in ATTACK_ID_RE.finditer(text)})
-    tokens = set(_MECHANISM_TOKEN_RE.findall(text.lower()))
-    cited += sorted(
-        {tid for token, tid in MECHANISM_ALIASES.items() if token in tokens} - set(cited)
-    )
-    if not cited:
-        return fused
-    kb = get_attack_collection().get(ids=cited, include=["metadatas"])
-    explicit = [
-        _match_from_meta(attack_id, meta, EXPLICIT_ID_SCORE, None)
-        for attack_id, meta in zip(kb["ids"], kb["metadatas"])
-    ][:top_k]
-    if not explicit:
-        return fused
-    seen = {m.attack_id for m in explicit}
-    return (explicit + [m for m in fused if m.attack_id not in seen])[:top_k]
-
-
-def _dense_candidates(result: dict, i: int) -> Half:
-    """(attack_id, metadata, cosine_distance) for the i-th query of a
-    (possibly batched) Chroma query result, best-first."""
-    return list(zip(result["ids"][i], result["metadatas"][i], result["distances"][i]))
-
-
 @lru_cache(maxsize=1)
 def _examples_count() -> int:
     try:
@@ -218,15 +145,19 @@ def _examples_count() -> int:
 
 
 def _use_examples() -> bool:
-    """Examples merge in only when enabled AND the collection was built —
-    a checkout that never ran app.attack.build_examples degrades gracefully
-    to KB-only dense retrieval."""
+    """Procedure examples merge in only when enabled and actually built, so a
+    checkout that never ran build_examples degrades to KB-only retrieval."""
     return settings.example_retrieval and _examples_count() > 0
 
 
+def _dense_candidates(result: dict, i: int) -> Half:
+    """Best-first candidates for the i-th query of a batched Chroma result."""
+    return list(zip(result["ids"][i], result["metadatas"][i], result["distances"][i]))
+
+
 def _example_candidates(result: dict, i: int) -> Half:
-    """Like _dense_candidates, but for the procedure-examples collection,
-    whose record ids are "T1489:ex3" — the technique id lives in metadata."""
+    """Like _dense_candidates for the procedure-examples collection, whose
+    record ids are "T1489:ex3" — the technique id lives in the metadata."""
     return [
         (meta["attack_id"], meta, distance)
         for meta, distance in zip(result["metadatas"][i], result["distances"][i])
@@ -234,11 +165,9 @@ def _example_candidates(result: dict, i: int) -> Half:
 
 
 def _merge_by_distance(*hit_lists: Half) -> Half:
-    """Merge candidate lists produced by the SAME query vector against
-    different collections (KB documents, procedure examples). Distances are
-    directly comparable there — same query, same embedding space, cosine to
-    different documents — so unlike cross-half fusion this is a plain
-    best-distance dedupe per technique, not rank arithmetic."""
+    """Merge lists produced by the SAME query vector against different
+    collections. Distances are directly comparable there, so this is a plain
+    best-distance dedupe per technique rather than rank arithmetic."""
     best: dict[str, tuple[str, dict, float | None]] = {}
     for hits in hit_lists:
         for attack_id, meta, distance in hits:
@@ -248,24 +177,33 @@ def _merge_by_distance(*hit_lists: Half) -> Half:
     return sorted(best.values(), key=lambda hit: (hit[2], hit[0]))[:CANDIDATE_POOL]
 
 
+def _dense_hits(embeddings: list) -> list[Half]:
+    """One candidate list per query embedding, from the KB and (when enabled)
+    the procedure examples, in one batched query per collection."""
+    kb_result = get_attack_collection().query(
+        query_embeddings=embeddings, n_results=CANDIDATE_POOL
+    )
+    if not _use_examples():
+        return [_dense_candidates(kb_result, i) for i in range(len(embeddings))]
+    example_result = get_attack_examples_collection().query(
+        query_embeddings=embeddings, n_results=CANDIDATE_POOL
+    )
+    return [
+        _merge_by_distance(_dense_candidates(kb_result, i), _example_candidates(example_result, i))
+        for i in range(len(embeddings))
+    ]
+
+
 def _pooled_window_candidates(per_window: list[Half]) -> tuple[Half, dict[str, int]]:
     """Merge one chunk's per-window candidate lists into a single half, pooled
-    by *per-window rank* (best rank wins; ties broken by vote count, then id).
-    This is what gives a minority sentence's technique its own undiluted dense
-    shot — the chunk-level embedding averages it away. Ranks rather than raw
-    distances, because distances aren't comparable across windows: a window
-    whose #1 hit sits at 0.31 (T1021.001 for the SSH/RDP/WinRM sentence) is a
-    stronger signal than another window's #6 at 0.28 — distance-pooling let
-    the Kerberos windows' tight cluster re-bury the minority window's find.
+    by per-window *rank* (best rank wins, ties by vote count, then id). This is
+    what gives a minority sentence's technique its own undiluted dense shot;
+    distances aren't comparable across windows, so pooling them would let a
+    tight majority cluster re-bury the minority window's find.
 
     Also returns the seat quota for _fuse: each window's top
     `settings.window_seat_depth` ids mapped to their best per-window rank.
-    Pooling alone undoes the minority-sentence rescue at the last step — every
-    window's #1 ties at pooled rank 1, so a minority window's find sorts
-    behind the majority cluster's tie-break votes, misses the pooled half's
-    RESERVE_PER_HALF prefix, and RRF buries it uncorroborated (measured:
-    T1059.001 ranked #1 for its PowerShell window yet never surfaced as a
-    candidate)."""
+    """
     best_rank: dict[str, int] = {}
     votes: dict[str, int] = {}
     best_dist: dict[str, float] = {}
@@ -285,37 +223,108 @@ def _pooled_window_candidates(per_window: list[Half]) -> tuple[Half, dict[str, i
     return [(a, metas[a], best_dist[a]) for a in ranked], seats
 
 
+def _fuse(
+    halves: list[Half],
+    top_k: int,
+    window_seats: dict[str, int] | None = None,
+    rerank_windows: list[str] | None = None,
+) -> list[TechniqueMatch]:
+    """Reciprocal rank fusion across the halves, selecting `top_k` candidates.
+
+    Seats are allocated in three tiers:
+    - `window_seats` first, with absolute priority and capped at half of top_k.
+      A minority sentence's #1 hit has only one lonely half-contribution, so
+      any selection by fused score re-buries it; the cap exists because table
+      chunks give every row its own window and would otherwise fill the menu.
+    - each half's own top candidate (RESERVE_PER_HALF), skipped when the
+      cross-encoder ran: it judges single-half strength directly.
+    - the rest by fused score, tie-broken by attack_id so selection is
+      deterministic rather than dependent on which half was processed first.
+    """
+    fused: dict[str, dict] = {}
+    for results in halves:
+        for rank, (attack_id, meta, distance) in enumerate(results, start=1):
+            entry = fused.setdefault(attack_id, {"meta": meta, "score": 0.0, "distance": None})
+            entry["score"] += 1.0 / (RRF_K + rank)
+            if distance is not None and (entry["distance"] is None or distance < entry["distance"]):
+                entry["distance"] = distance
+
+    scores = {a: fused[a]["score"] for a in fused}
+    ranking = sorted(fused, key=lambda a: (-fused[a]["score"], a))
+
+    cross_encoder: dict[str, float] = {}
+    if rerank_windows and rerank.available():
+        head = ranking[: rerank.RERANK_DEPTH]
+        kb = get_attack_collection().get(ids=head, include=["documents"])
+        cross_encoder = rerank.rerank_scores(rerank_windows, dict(zip(kb["ids"], kb["documents"])))
+    if cross_encoder:
+        ranking = rerank.blended_order(scores, cross_encoder)
+
+    selected = sorted(
+        (a for a in (window_seats or {}) if a in fused),
+        key=lambda a: (window_seats[a], -fused[a]["score"], a),
+    )[: top_k // 2]
+    passes: list[set[str] | None] = []
+    if not cross_encoder:
+        passes.append({a for results in halves for a, _, _ in results[:RESERVE_PER_HALF]})
+    passes.append(None)
+    for pool in passes:
+        for attack_id in ranking:
+            if len(selected) >= top_k:
+                break
+            if attack_id not in selected and (pool is None or attack_id in pool):
+                selected.append(attack_id)
+
+    position = {a: i for i, a in enumerate(ranking)}
+    selected.sort(key=lambda a: position.get(a, len(position)))
+    return [
+        _match_from_meta(a, fused[a]["meta"], fused[a]["score"], fused[a]["distance"])
+        for a in selected
+    ]
+
+
+def _prepend_explicit_ids(
+    text: str, fused: list[TechniqueMatch], top_k: int
+) -> list[TechniqueMatch]:
+    """Put techniques the text cites by id — or names by mechanism token — in
+    front of the retrieved candidates, keeping the total at top_k so the
+    mapper's prompt budget doesn't grow. Cited ids missing from the KB
+    (deprecated, revoked, typos) simply don't come back and are dropped."""
+    if not settings.explicit_ids:
+        return fused
+    cited = sorted({m.group(0).upper() for m in ATTACK_ID_RE.finditer(text)})
+    lowered = text.lower()
+    tokens = set(_MECHANISM_TOKEN_RE.findall(lowered))
+    cited += sorted(
+        {tid for token, tid in MECHANISM_ALIASES.items() if token in tokens} - set(cited)
+    )
+    cited += sorted(
+        {tid for pattern, tid in _PHRASE_RES.items() if pattern.search(lowered)} - set(cited)
+    )
+    if not cited:
+        return fused
+    kb = get_attack_collection().get(ids=cited, include=["metadatas"])
+    explicit = [
+        _match_from_meta(attack_id, meta, EXPLICIT_ID_SCORE, None)
+        for attack_id, meta in zip(kb["ids"], kb["metadatas"])
+    ][:top_k]
+    if not explicit:
+        return fused
+    seen = {m.attack_id for m in explicit}
+    return (explicit + [m for m in fused if m.attack_id not in seen])[:top_k]
+
+
 def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
-    """Hybrid retrieval against the ATT&CK knowledge base, fusing up to three
-    halves with reciprocal rank fusion: dense over the whole text, dense over
-    its sentence windows (when the text spans several), and per-sentence
-    rank-pooled BM25. A dedicated reranker model over the fused list is still
-    open (see CLAUDE.md)."""
-    kb = get_attack_collection()
-    examples = get_attack_examples_collection() if _use_examples() else None
-    halves: list[Half] = []
+    """Hybrid retrieval for one piece of ad-hoc text (embeds it on the fly).
+    For an indexed report use search_techniques_for_report, which reuses the
+    embeddings computed at ingest."""
+    halves: list[Half] = [_dense_hits([embed_text(text)])[0]]
     window_seats: dict[str, int] = {}
-
-    def dense_hits(embeddings: list) -> list[Half]:
-        """One merged (KB ∪ examples) candidate list per query embedding."""
-        kb_result = kb.query(query_embeddings=embeddings, n_results=CANDIDATE_POOL)
-        if examples is None:
-            return [_dense_candidates(kb_result, i) for i in range(len(embeddings))]
-        ex_result = examples.query(query_embeddings=embeddings, n_results=CANDIDATE_POOL)
-        return [
-            _merge_by_distance(_dense_candidates(kb_result, i), _example_candidates(ex_result, i))
-            for i in range(len(embeddings))
-        ]
-
-    embedding = embed_text(text)
-    halves.append(dense_hits([embedding])[0])
 
     windows = build_windows(text) if settings.sentence_retrieval else []
     if settings.sentence_retrieval:
         if len(windows) > 1:
-            window_half, window_seats = _pooled_window_candidates(
-                dense_hits(embed_texts(windows))
-            )
+            window_half, window_seats = _pooled_window_candidates(_dense_hits(embed_texts(windows)))
             halves.append(window_half)
         halves.append(bm25_search_sentences(text, CANDIDATE_POOL))
     else:
@@ -326,18 +335,18 @@ def search_techniques(text: str, top_k: int = 8) -> list[TechniqueMatch]:
     )
 
 
-def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> dict[str, list[TechniqueMatch]]:
-    """Run hybrid retrieval for every indexed chunk of one report, keyed by
-    chunk id (`"<report_id>:<order>"`). All dense queries reuse embeddings
-    computed at index time (chunk embeddings from report_chunks, sentence-
-    window embeddings from report_windows) and resolve in two batched HNSW
-    queries; the BM25 half scores each chunk's sentences against the
-    in-process index. Zero Ollama calls either way. This is the shape the LLM
-    mapping stage (6) consumes.
+def search_techniques_for_report(
+    report_id: str, top_k_per_chunk: int = 5
+) -> dict[str, list[TechniqueMatch]]:
+    """Hybrid retrieval for every indexed chunk of one report, keyed by chunk
+    id ("<report_id>:<order>"). This is the shape the LLM mapping stage
+    consumes.
 
-    Reports indexed before sentence windows existed simply have no entries in
-    report_windows — the window half is absent and fusion degrades gracefully
-    to the remaining halves."""
+    Makes zero Ollama calls: the dense halves reuse the embeddings stored at
+    index time (two batched HNSW queries for the whole report) and BM25 runs
+    in-process. Reports indexed before sentence windows existed simply have no
+    window half, and fusion degrades gracefully.
+    """
     chunks = get_report_chunks_collection().get(
         where={"report_id": report_id}, include=["embeddings", "documents", "metadatas"]
     )
@@ -346,28 +355,10 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
         return {}
     order_to_chunk = {meta["order"]: cid for cid, meta in zip(chunk_ids, chunks["metadatas"])}
 
-    examples = get_attack_examples_collection() if _use_examples() else None
+    chunk_hits = _dense_hits(chunks["embeddings"])
 
-    def dense_hits(embeddings) -> list[Half]:
-        """One merged (KB ∪ procedure-examples) candidate list per query
-        embedding — two batched HNSW queries instead of one when examples
-        are available."""
-        kb_result = get_attack_collection().query(
-            query_embeddings=embeddings, n_results=CANDIDATE_POOL
-        )
-        if examples is None:
-            return [_dense_candidates(kb_result, i) for i in range(len(embeddings))]
-        ex_result = examples.query(query_embeddings=embeddings, n_results=CANDIDATE_POOL)
-        return [
-            _merge_by_distance(_dense_candidates(kb_result, i), _example_candidates(ex_result, i))
-            for i in range(len(embeddings))
-        ]
-
-    chunk_hits = dense_hits(chunks["embeddings"])
-
-    # Sentence-window dense half: one batched KB query for every window of the
-    # report, grouped back per chunk and max-pooled (plus each chunk's
-    # per-window seat set for fusion).
+    # Sentence-window half: one batched query for every window in the report,
+    # grouped back per chunk and rank-pooled.
     window_half_by_chunk: dict[str, tuple[Half, dict[str, int]]] = {}
     if settings.sentence_retrieval:
         windows = get_report_windows_collection().get(
@@ -379,41 +370,34 @@ def search_techniques_for_report(report_id: str, top_k_per_chunk: int = 5) -> di
                 chunk_id = order_to_chunk.get(meta["chunk_order"])
                 if chunk_id is not None:
                     indices_by_chunk.setdefault(chunk_id, []).append(i)
-            window_hits = dense_hits(windows["embeddings"])
+            window_hits = _dense_hits(windows["embeddings"])
             window_half_by_chunk = {
                 chunk_id: _pooled_window_candidates([window_hits[i] for i in indices])
                 for chunk_id, indices in indices_by_chunk.items()
             }
 
-    def _body(i: int) -> str:
-        """Body only (chunk documents are "<breadcrumb>\n\n<body>"): the
-        breadcrumb line as a sentence voter crowns generic hits for the section
-        title; the windows half is body-only for the same reason."""
+    def body(i: int) -> str:
+        """Chunk text without its breadcrumb line: as a sentence voter, the
+        breadcrumb crowns generic hits for the section title."""
         doc = chunks["documents"][i]
         return doc.split("\n\n", 1)[1] if chunks["metadatas"][i].get("heading_path") else doc
 
-    def halves_for(i: int, chunk_id: str) -> tuple[list[Half], dict[str, int]]:
+    def fused_for(i: int, chunk_id: str) -> list[TechniqueMatch]:
         halves = [chunk_hits[i]]
         window_seats: dict[str, int] = {}
         if chunk_id in window_half_by_chunk:
             window_half, window_seats = window_half_by_chunk[chunk_id]
             halves.append(window_half)
         if settings.sentence_retrieval:
-            halves.append(bm25_search_sentences(_body(i), CANDIDATE_POOL))
+            halves.append(bm25_search_sentences(body(i), CANDIDATE_POOL))
         else:
             halves.append(bm25_search(chunks["documents"][i], CANDIDATE_POOL))
-        return halves, window_seats
 
-    def fused_for(i: int, chunk_id: str) -> list[TechniqueMatch]:
-        halves, window_seats = halves_for(i, chunk_id)
-        # Rerank against the chunk's own sentence windows — rebuilt from the
-        # body rather than read back from report_windows, since the reranker
-        # needs the window *text*, not its embedding.
-        body = _body(i)
-        windows = build_windows(body) if rerank.available() else []
+        # The reranker needs window *text*, not the stored embeddings.
+        rerank_windows = build_windows(body(i)) if rerank.available() else []
         return _prepend_explicit_ids(
             chunks["documents"][i],
-            _fuse(halves, top_k_per_chunk, window_seats, windows or [body]),
+            _fuse(halves, top_k_per_chunk, window_seats, rerank_windows or [body(i)]),
             top_k_per_chunk,
         )
 

@@ -1,8 +1,8 @@
 import type { Catalog, Layer } from "../types/attack";
 
-/** Carries the HTTP status so callers can tell a 404 (the job no longer exists
- * server-side — e.g. the backend restarted and lost its in-memory job
- * registry) apart from a transient network failure worth retrying. */
+/** Carries the HTTP status so callers can tell a 404 — the job no longer
+ * exists server-side, e.g. the backend restarted and lost its in-memory job
+ * registry — apart from a transient network failure worth retrying. */
 export class HttpError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -12,6 +12,28 @@ export class HttpError extends Error {
   }
 }
 
+/** Every call goes through here: one place that throws HttpError with the
+ * server's message, and one place that percent-encodes path segments. */
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, init);
+  if (!res.ok) {
+    throw new HttpError(res.status, `${init?.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+function sendJson<T>(method: "POST" | "PUT", path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Path segments come from ids the user can influence (a ?saved= query
+ * parameter), so they are always encoded rather than interpolated raw. */
+const seg = encodeURIComponent;
+
 export interface IngestStarted {
   report_id: string;
   filename: string;
@@ -19,6 +41,11 @@ export interface IngestStarted {
 }
 
 export type IngestStatusValue = "parsing" | "chunking" | "embedding" | "done" | "error" | "cancelled";
+
+/** Statuses at which a job has stopped for good — polling ends here. */
+export function isTerminal(status: string): boolean {
+  return status === "done" || status === "error" || status === "cancelled";
+}
 
 export interface IngestStatus {
   report_id: string;
@@ -33,23 +60,15 @@ export interface IngestStatus {
   step_seconds: Record<string, number>;
 }
 
-export async function ingestPdf(file: File): Promise<IngestStarted> {
+export function ingestPdf(file: File, ocrEnabled = true): Promise<IngestStarted> {
   const formData = new FormData();
   formData.append("file", file);
-
-  const res = await fetch("/api/ingest", { method: "POST", body: formData });
-  if (!res.ok) {
-    throw new Error(`Ingest failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+  formData.append("ocr", String(ocrEnabled));
+  return request<IngestStarted>("/ingest", { method: "POST", body: formData });
 }
 
-export async function getIngestStatus(reportId: string): Promise<IngestStatus> {
-  const res = await fetch(`/api/ingest/${reportId}/status`);
-  if (!res.ok) {
-    throw new HttpError(res.status, `Fetching ingest status failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function getIngestStatus(reportId: string): Promise<IngestStatus> {
+  return request<IngestStatus>(`/ingest/${seg(reportId)}/status`);
 }
 
 export type MappingStatusValue =
@@ -103,51 +122,29 @@ export interface MapOptions {
   report_type?: ReportType;
 }
 
-export async function startMapping(
+export function startMapping(
   reportId: string,
   options?: MapOptions,
 ): Promise<{ report_id: string; status: MappingStatusValue }> {
-  const res = await fetch(`/api/reports/${reportId}/map`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(options ?? {}),
-  });
-  if (!res.ok) {
-    throw new Error(`Starting mapping failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+  return sendJson("POST", `/reports/${seg(reportId)}/map`, options ?? {});
 }
 
 /** Ask a running job to stop (no-op if it already finished). The job settles
  * to status "cancelled" at its next safe boundary. */
 export async function cancelIngest(reportId: string): Promise<void> {
-  const res = await fetch(`/api/ingest/${reportId}/cancel`, { method: "POST" });
-  if (!res.ok) {
-    throw new Error(`Cancelling ingest failed: ${res.status} ${await res.text()}`);
-  }
+  await request(`/ingest/${seg(reportId)}/cancel`, { method: "POST" });
 }
 
 export async function cancelMapping(reportId: string): Promise<void> {
-  const res = await fetch(`/api/reports/${reportId}/map/cancel`, { method: "POST" });
-  if (!res.ok) {
-    throw new Error(`Cancelling mapping failed: ${res.status} ${await res.text()}`);
-  }
+  await request(`/reports/${seg(reportId)}/map/cancel`, { method: "POST" });
 }
 
-export async function getMappingStatus(reportId: string): Promise<MappingStatus> {
-  const res = await fetch(`/api/reports/${reportId}/map/status`);
-  if (!res.ok) {
-    throw new HttpError(res.status, `Fetching mapping status failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function getMappingStatus(reportId: string): Promise<MappingStatus> {
+  return request<MappingStatus>(`/reports/${seg(reportId)}/map/status`);
 }
 
-export async function getAttackCatalog(): Promise<Catalog> {
-  const res = await fetch("/api/attack/catalog");
-  if (!res.ok) {
-    throw new Error(`Fetching ATT&CK catalog failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function getAttackCatalog(): Promise<Catalog> {
+  return request<Catalog>("/attack/catalog");
 }
 
 /** A saved matrix in the backend's on-disk library: every mapping run lands
@@ -170,51 +167,24 @@ export interface SavedMatrix extends SavedMatrixSummary {
   layer: Layer;
 }
 
-export async function getMatrixHistory(): Promise<SavedMatrixSummary[]> {
-  const res = await fetch("/api/matrix/history");
-  if (!res.ok) {
-    throw new Error(`Fetching matrix history failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function getMatrixHistory(): Promise<SavedMatrixSummary[]> {
+  return request<SavedMatrixSummary[]>("/matrix/history");
 }
 
-export async function getSavedMatrix(id: string): Promise<SavedMatrix> {
-  const res = await fetch(`/api/matrix/history/${id}`);
-  if (!res.ok) {
-    throw new Error(`Fetching saved matrix failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function getSavedMatrix(id: string): Promise<SavedMatrix> {
+  return request<SavedMatrix>(`/matrix/history/${seg(id)}`);
 }
 
-export async function createSavedMatrix(name: string, layer: Layer): Promise<SavedMatrix> {
-  const res = await fetch("/api/matrix/history", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, layer }),
-  });
-  if (!res.ok) {
-    throw new Error(`Saving matrix failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function createSavedMatrix(name: string, layer: Layer): Promise<SavedMatrix> {
+  return sendJson<SavedMatrix>("POST", "/matrix/history", { name, layer });
 }
 
-export async function updateSavedMatrix(id: string, name: string, layer: Layer): Promise<SavedMatrix> {
-  const res = await fetch(`/api/matrix/history/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, layer }),
-  });
-  if (!res.ok) {
-    throw new Error(`Saving matrix failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function updateSavedMatrix(id: string, name: string, layer: Layer): Promise<SavedMatrix> {
+  return sendJson<SavedMatrix>("PUT", `/matrix/history/${seg(id)}`, { name, layer });
 }
 
 export async function deleteSavedMatrix(id: string): Promise<void> {
-  const res = await fetch(`/api/matrix/history/${id}`, { method: "DELETE" });
-  if (!res.ok) {
-    throw new Error(`Deleting saved matrix failed: ${res.status} ${await res.text()}`);
-  }
+  await request(`/matrix/history/${seg(id)}`, { method: "DELETE" });
 }
 
 /** LLM warm-up state: device is null until it's knowable (nothing loaded in
@@ -225,10 +195,6 @@ export interface WarmupStatus {
   model: string;
 }
 
-export async function getWarmupStatus(): Promise<WarmupStatus> {
-  const res = await fetch("/api/warmup");
-  if (!res.ok) {
-    throw new Error(`Fetching warmup status failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+export function getWarmupStatus(): Promise<WarmupStatus> {
+  return request<WarmupStatus>("/warmup");
 }

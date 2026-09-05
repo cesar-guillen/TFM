@@ -4,11 +4,9 @@ import chromadb
 
 from app.core.config import settings
 
-# Both collections use cosine distance. This makes vector magnitude irrelevant,
-# which is what lets the unnormalized KB seed vectors (embedded via the legacy
-# /api/embeddings endpoint) coexist with the L2-normalized vectors the batch
-# /api/embed endpoint now produces (see app.attack.embeddings) — same
-# directions, different magnitudes, identical cosine ranking.
+# Both collections use cosine distance, which makes vector magnitude
+# irrelevant: the KB seed's vectors (legacy, unnormalized) and the vectors
+# Ollama's /api/embed returns today (L2-normalized) rank identically.
 COSINE_SPACE = {"hnsw:space": "cosine"}
 
 
@@ -18,10 +16,9 @@ def get_chroma_client() -> chromadb.ClientAPI:
 
 
 def get_attack_collection() -> chromadb.Collection:
-    """The ATT&CK techniques KB. Raises if an existing collection still uses
-    the pre-migration L2 space — normalized query vectors against unnormalized
-    stored vectors under L2 would silently return garbage neighbors, so fail
-    loudly with the fix instead."""
+    """The ATT&CK techniques KB. Raises on a pre-migration L2 collection —
+    normalized queries against unnormalized vectors under L2 return
+    plausible-looking garbage, so fail loudly with the fix instead."""
     collection = get_chroma_client().get_or_create_collection(
         settings.attack_collection, metadata=COSINE_SPACE
     )
@@ -30,38 +27,31 @@ def get_attack_collection() -> chromadb.Collection:
         raise RuntimeError(
             f"Chroma collection '{settings.attack_collection}' uses '{space}' distance "
             "(built before the cosine migration). Re-run "
-            "`docker compose exec backend python -m app.attack.build_kb` to migrate it "
-            "(instant — restores from the bundled seed)."
+            "`docker compose exec backend python -m app.attack.build_kb` to migrate it."
         )
     return collection
 
 
 def get_report_chunks_collection() -> chromadb.Collection:
-    """Ingested report chunks. Not vector-queried today (its embeddings are
-    used as *query* vectors against the KB), so an existing pre-migration L2
-    collection is harmless — no space guard needed."""
+    """Ingested report chunks. Never vector-queried (its embeddings serve as
+    query vectors against the KB), so no space guard is needed."""
     return get_chroma_client().get_or_create_collection(
         settings.report_chunks_collection, metadata=COSINE_SPACE
     )
 
 
-def get_attack_examples_collection() -> chromadb.Collection:
-    """ATT&CK procedure-example vectors (see app.attack.build_examples): each
-    example is its own embedding carrying its technique's full metadata, so at
-    query time example hits merge into the dense halves by distance and vote
-    for their technique. Kept separate from attack_techniques on purpose —
-    concatenating examples into the technique documents measurably diluted
-    their embeddings and regressed retrieval coverage."""
+def get_report_windows_collection() -> chromadb.Collection:
+    """Sentence windows of ingested chunks, embedded at index time for the
+    sub-chunk dense retrieval half."""
     return get_chroma_client().get_or_create_collection(
-        settings.attack_examples_collection, metadata=COSINE_SPACE
+        settings.report_windows_collection, metadata=COSINE_SPACE
     )
 
 
-def get_report_windows_collection() -> chromadb.Collection:
-    """Sentence windows of ingested report chunks (see app.ingest.sentences),
-    embedded at index time for the sub-chunk dense retrieval half. Like
-    report_chunks, never vector-queried — embeddings are query vectors against
-    the KB, grouped back to their chunk via the `chunk_order` metadata."""
+def get_attack_examples_collection() -> chromadb.Collection:
+    """ATT&CK procedure examples, one embedding each, carrying their
+    technique's metadata. Kept out of attack_techniques deliberately:
+    concatenating examples into the technique documents dilutes them."""
     return get_chroma_client().get_or_create_collection(
-        settings.report_windows_collection, metadata=COSINE_SPACE
+        settings.attack_examples_collection, metadata=COSINE_SPACE
     )

@@ -1,0 +1,287 @@
+report,date,tactic,technique_id,technique_name,level,also_valid_under,source
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Initial Access,T1190,Exploit Public-Facing Application,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Execution,T1059.001,PowerShell,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Execution,T1072,Software Deployment Tools,technique,Lateral Movement,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Persistence,T1078.003,Local Accounts,sub-technique,"Stealth, Privilege Escalation, Initial Access",sheet only
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Persistence,T1136,Create Account,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Persistence,T1543.003,Windows Service,sub-technique,Privilege Escalation,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Stealth,T1218.005,Mshta,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Defense Impairment,T1685.005,Clear Windows Event Logs,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Credential Access,T1003.001,LSASS Memory,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Credential Access,T1552.001,Credentials In Files,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Discovery,T1016,System Network Configuration Discovery,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Discovery,T1018,Remote System Discovery,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Discovery,T1033,System Owner/User Discovery,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Discovery,T1046,Network Service Discovery,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Discovery,T1057,Process Discovery,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Command and Control,T1105,Ingress Tool Transfer,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Command and Control,T1219,Remote Access Tools,technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Exfiltration,T1567.002,Exfiltration to Cloud Storage,sub-technique,,report
+Confluence Exploit Leads to LockBit Ransomware,2025-02-24,Impact,T1486,Data Encrypted for Impact,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Initial Access,T1189,Drive-by Compromise,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Execution,T1047,Windows Management Instrumentation,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Execution,T1059.001,PowerShell,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Execution,T1204.002,Malicious File,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Execution,T1569.002,Service Execution,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Persistence,T1547.001,Registry Run Keys / Startup Folder,sub-technique,Privilege Escalation,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Privilege Escalation,T1134,Access Token Manipulation,technique,Stealth,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Privilege Escalation,T1548,Abuse Elevation Control Mechanism,technique,,sheet only
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Stealth,T1055,Process Injection,technique,Privilege Escalation,sheet only
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Stealth,T1127.001,MSBuild,sub-technique,Execution,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Stealth,T1218.010,Regsvr32,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Stealth,T1564.001,Hidden Files and Directories,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Credential Access,T1003.001,LSASS Memory,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1018,Remote System Discovery,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1033,System Owner/User Discovery,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1069.001,Local Groups,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1069.002,Domain Groups,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1082,System Information Discovery,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1087.001,Local Account,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1087.002,Domain Account,sub-technique,,sheet only
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1135,Network Share Discovery,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1482,Domain Trust Discovery,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Discovery,T1518.001,Security Software Discovery,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Lateral Movement,T1021.002,SMB/Windows Admin Shares,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Lateral Movement,T1570,Lateral Tool Transfer,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Collection,T1560.001,Archive via Utility,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Command and Control,T1071.001,Web Protocols,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Command and Control,T1102.001,Dead Drop Resolver,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Command and Control,T1105,Ingress Tool Transfer,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Command and Control,T1572,Protocol Tunneling,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Exfiltration,T1567.002,Exfiltration to Cloud Storage,sub-technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Impact,T1486,Data Encrypted for Impact,technique,,report
+Fake Zoom Ends in Blacksuit Ransomware,2025-03-31,Impact,T1490,Inhibit System Recovery,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Initial Access,T1190,Exploit Public-Facing Application,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Execution,T1047,Windows Management Instrumentation,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Execution,T1059.001,PowerShell,sub-technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Persistence,T1136,Create Account,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Persistence,T1136.001,Local Account,sub-technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Persistence,T1543.003,Windows Service,sub-technique,Privilege Escalation,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Privilege Escalation,T1068,Exploitation for Privilege Escalation,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Privilege Escalation,T1134.002,Create Process with Token,sub-technique,Stealth,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Defense Impairment,T1112,Modify Registry,technique,Persistence,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Defense Impairment,T1685,Disable or Modify Tools,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Defense Impairment,T1686,Disable or Modify System Firewall,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Credential Access,T1003.001,LSASS Memory,sub-technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Credential Access,T1003.003,NTDS,sub-technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Discovery,T1012,Query Registry,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Discovery,T1016,System Network Configuration Discovery,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Discovery,T1018,Remote System Discovery,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Discovery,T1057,Process Discovery,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Lateral Movement,T1021.002,SMB/Windows Admin Shares,sub-technique,,sheet only
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Command and Control,T1071,Application Layer Protocol,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Command and Control,T1105,Ingress Tool Transfer,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Command and Control,T1219,Remote Access Tools,technique,,report
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,2025-05-19,Impact,T1486,Data Encrypted for Impact,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Initial Access,T1078,Valid Accounts,technique,"Stealth, Persistence, Privilege Escalation",report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Initial Access,T1133,External Remote Services,technique,Persistence,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Execution,T1059.001,PowerShell,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Execution,T1059.005,Visual Basic,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Persistence,T1543.003,Windows Service,sub-technique,Privilege Escalation,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Stealth,T1070,Indicator Removal,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Defense Impairment,T1222,File and Directory Permissions Modification,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Defense Impairment,T1685.005,Clear Windows Event Logs,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Credential Access,T1003.001,LSASS Memory,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Credential Access,T1003.006,DCSync,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Credential Access,T1110.003,Password Spraying,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1016,System Network Configuration Discovery,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1018,Remote System Discovery,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1046,Network Service Discovery,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1057,Process Discovery,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1069.001,Local Groups,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1069.002,Domain Groups,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1083,File and Directory Discovery,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1087.001,Local Account,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1087.002,Domain Account,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Discovery,T1482,Domain Trust Discovery,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Lateral Movement,T1021.002,SMB/Windows Admin Shares,sub-technique,,sheet only
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Lateral Movement,T1570,Lateral Tool Transfer,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Command and Control,T1219,Remote Access Tools,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Exfiltration,T1048,Exfiltration Over Alternative Protocol,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Impact,T1486,Data Encrypted for Impact,technique,,report
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,2025-06-30,Impact,T1490,Inhibit System Recovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Execution,T1047,Windows Management Instrumentation,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Execution,T1059.001,PowerShell,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Execution,T1204.002,Malicious File,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Execution,T1569.002,Service Execution,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Persistence,T1136,Create Account,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Persistence,T1136.001,Local Account,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Persistence,T1543.003,Windows Service,sub-technique,Privilege Escalation,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Persistence,T1547.001,Registry Run Keys / Startup Folder,sub-technique,Privilege Escalation,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Privilege Escalation,T1098.007,Additional Local or Domain Groups,sub-technique,Persistence,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Stealth,T1027,Obfuscated Files or Information,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Stealth,T1036,Masquerading,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Stealth,T1055,Process Injection,technique,Privilege Escalation,sheet only
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Stealth,T1070.006,Timestomp,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Stealth,T1127.001,MSBuild,sub-technique,Execution,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Defense Impairment,T1685,Disable or Modify Tools,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Credential Access,T1003.001,LSASS Memory,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Credential Access,T1003.006,DCSync,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Credential Access,T1555,Credentials from Password Stores,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1016,System Network Configuration Discovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1018,Remote System Discovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1033,System Owner/User Discovery,technique,,sheet only
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1046,Network Service Discovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1069.001,Local Groups,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1069.002,Domain Groups,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1083,File and Directory Discovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1087.001,Local Account,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1087.002,Domain Account,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1135,Network Share Discovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1482,Domain Trust Discovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Discovery,T1615,Group Policy Discovery,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Lateral Movement,T1570,Lateral Tool Transfer,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Collection,T1119,Automated Collection,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Collection,T1560.001,Archive via Utility,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Command and Control,T1071.001,Web Protocols,sub-technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Command and Control,T1090,Proxy,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Command and Control,T1572,Protocol Tunneling,technique,,report
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,2025-09-08,Exfiltration,T1048,Exfiltration Over Alternative Protocol,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Initial Access,T1189,Drive-by Compromise,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Execution,T1047,Windows Management Instrumentation,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Execution,T1059.001,PowerShell,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Execution,T1059.007,JavaScript,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Execution,T1204.002,Malicious File,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Execution,T1569.002,Service Execution,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Persistence,T1053.005,Scheduled Task,sub-technique,"Execution, Privilege Escalation",report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Persistence,T1547.001,Registry Run Keys / Startup Folder,sub-technique,Privilege Escalation,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Privilege Escalation,T1078.002,Domain Accounts,sub-technique,"Stealth, Persistence, Initial Access",report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Privilege Escalation,T1134,Access Token Manipulation,technique,Stealth,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Privilege Escalation,T1548.002,Bypass User Account Control,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Stealth,T1027.013,Encrypted/Encoded File,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Stealth,T1027.016,Junk Code Insertion,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Stealth,T1036,Masquerading,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Stealth,T1055,Process Injection,technique,Privilege Escalation,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Stealth,T1070.004,File Deletion,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Stealth,T1218.011,Rundll32,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Defense Impairment,T1222.001,Windows Permissions,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Credential Access,T1003.001,LSASS Memory,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Credential Access,T1552.001,Credentials In Files,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Credential Access,T1555.003,Credentials from Web Browsers,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1018,Remote System Discovery,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1033,System Owner/User Discovery,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1046,Network Service Discovery,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1069.001,Local Groups,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1069.002,Domain Groups,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1082,System Information Discovery,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1083,File and Directory Discovery,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1087.001,Local Account,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1087.002,Domain Account,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1135,Network Share Discovery,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1482,Domain Trust Discovery,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Discovery,T1518.001,Security Software Discovery,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Lateral Movement,T1021.002,SMB/Windows Admin Shares,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Lateral Movement,T1210,Exploitation of Remote Services,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Lateral Movement,T1570,Lateral Tool Transfer,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Collection,T1560.001,Archive via Utility,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Command and Control,T1071.001,Web Protocols,sub-technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Command and Control,T1105,Ingress Tool Transfer,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Command and Control,T1571,Non-Standard Port,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Exfiltration,T1020,Automated Exfiltration,technique,,sheet only
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Exfiltration,T1048,Exfiltration Over Alternative Protocol,technique,,report
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,2025-09-29,Exfiltration,T1048.003,Exfiltration Over Unencrypted Non-C2 Protocol,sub-technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Initial Access,T1078,Valid Accounts,technique,"Stealth, Persistence, Privilege Escalation",report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Initial Access,T1133,External Remote Services,technique,Persistence,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Execution,T1059.001,PowerShell,sub-technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Persistence,T1136.002,Domain Account,sub-technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Persistence,T1543.003,Windows Service,sub-technique,Privilege Escalation,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Privilege Escalation,T1098.007,Additional Local or Domain Groups,sub-technique,Persistence,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1012,Query Registry,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1016,System Network Configuration Discovery,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1018,Remote System Discovery,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1046,Network Service Discovery,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1057,Process Discovery,technique,,sheet only
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1082,System Information Discovery,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1087.001,Local Account,sub-technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Discovery,T1135,Network Share Discovery,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Collection,T1560.001,Archive via Utility,sub-technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Command and Control,T1219,Remote Access Tools,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Exfiltration,T1567,Exfiltration Over Web Service,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Impact,T1486,Data Encrypted for Impact,technique,,report
+Cat's Got Your Files - Lynx Ransomware,2025-12-17,Impact,T1490,Inhibit System Recovery,technique,,report
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Initial Access,T1190,Exploit Public-Facing Application,technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Execution,T1059.001,PowerShell,sub-technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Execution,T1059.003,Windows Command Shell,sub-technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Execution,T1569.002,Service Execution,sub-technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Privilege Escalation,T1134,Access Token Manipulation,technique,Stealth,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Defense Impairment,T1112,Modify Registry,technique,Persistence,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Defense Impairment,T1686,Disable or Modify System Firewall,technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Credential Access,T1003.001,LSASS Memory,sub-technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Discovery,T1018,Remote System Discovery,technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Discovery,T1069.002,Domain Groups,sub-technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Discovery,T1087.001,Local Account,sub-technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Command and Control,T1071,Application Layer Protocol,technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Command and Control,T1219,Remote Access Tools,technique,,sheet (OCR)
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,2026-02-23,Impact,T1486,Data Encrypted for Impact,technique,,sheet (OCR)
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Initial Access,T1189,Drive-by Compromise,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Execution,T1047,Windows Management Instrumentation,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Execution,T1059.001,PowerShell,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Execution,T1059.003,Windows Command Shell,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Execution,T1204.002,Malicious File,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Execution,T1569.002,Service Execution,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Persistence,T1136,Create Account,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Persistence,T1543.003,Windows Service,sub-technique,Privilege Escalation,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Stealth,T1027.010,Command Obfuscation,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Stealth,T1036,Masquerading,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Stealth,T1055,Process Injection,technique,Privilege Escalation,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Stealth,T1070.004,File Deletion,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Stealth,T1574.001,DLL,sub-technique,Execution,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Credential Access,T1003.001,LSASS Memory,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Credential Access,T1003.003,NTDS,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Credential Access,T1555,Credentials from Password Stores,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1016,System Network Configuration Discovery,technique,,sheet only
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1018,Remote System Discovery,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1033,System Owner/User Discovery,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1046,Network Service Discovery,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1069.001,Local Groups,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1069.002,Domain Groups,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1082,System Information Discovery,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1083,File and Directory Discovery,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1087.001,Local Account,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1087.002,Domain Account,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1135,Network Share Discovery,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Discovery,T1482,Domain Trust Discovery,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Lateral Movement,T1021.001,Remote Desktop Protocol,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Lateral Movement,T1021.003,Distributed Component Object Model,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Collection,T1039,Data from Network Shared Drive,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Command and Control,T1071.001,Web Protocols,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Command and Control,T1090,Proxy,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Command and Control,T1219,Remote Access Tools,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Command and Control,T1568.002,Domain Generation Algorithms,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Exfiltration,T1041,Exfiltration Over C2 Channel,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Exfiltration,T1048.001,Exfiltration Over Symmetric Encrypted Non-C2 Protocol,sub-technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Impact,T1486,Data Encrypted for Impact,technique,,report
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,2026-06-29,Impact,T1490,Inhibit System Recovery,technique,,report
+Part 1 BengalSEO,2026-08-24,Resource Development,T1583.001,Domains,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Resource Development,T1583.006,Web Services,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Resource Development,T1608.006,SEO Poisoning,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Initial Access,T1189,Drive-by Compromise,technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Execution,T1059.001,PowerShell,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Execution,T1059.003,Windows Command Shell,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Execution,T1059.005,Visual Basic,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Execution,T1059.007,JavaScript,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Privilege Escalation,T1053.005,Scheduled Task,sub-technique,"Execution, Persistence",sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Stealth,T1027.013,Encrypted/Encoded File,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Stealth,T1027.014,Polymorphic Code,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Stealth,T1036.008,Masquerade File Type,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Stealth,T1497,Virtualization/Sandbox Evasion,technique,Discovery,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Command and Control,T1008,Fallback Channels,technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Command and Control,T1071.001,Web Protocols,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Command and Control,T1104,Multi-Stage Channels,technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Impact,T1496.001,Compute Hijacking,sub-technique,,sheet (OCR)
+Part 1 BengalSEO,2026-08-24,Impact,T1657,Financial Theft,technique,,sheet (OCR)

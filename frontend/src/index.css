@@ -56,6 +56,45 @@ body {
   background: var(--text-faint);
 }
 
+/* ── App shell ───────────────────────────────────────────────────────────── */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-header__name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.app-header__tagline {
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  margin-left: 0.25rem;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -681,19 +720,6 @@ body {
   opacity: 0.85;
 }
 
-.attack-matrix--compact .attack-matrix__toolbar {
-  padding: 0.5rem 0.75rem;
-}
-
-.attack-matrix--compact .attack-matrix__column {
-  flex-basis: 158px;
-}
-
-.attack-matrix--compact .attack-matrix__cell {
-  font-size: 0.7rem;
-  padding: 0.28rem 0.4rem;
-}
-
 /* Shared anchored popover shell (tactic menu + cell editor) */
 .attack-matrix__popover {
   position: fixed;
@@ -1028,60 +1054,12 @@ body {
   overflow: hidden;
 }
 
-/* Floating sideways-scroll arrows for the full (non-overview) matrix page —
-   the dashboard preview fits its full width with no side-scroll, so these
-   only ever render there. Pinned to the bottom corners of the grid. */
-.attack-matrix__arrow {
-  position: absolute;
-  bottom: 0.6rem;
-  z-index: 5;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 1.4rem;
-  line-height: 1;
-  color: var(--text);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
-  cursor: pointer;
-  opacity: 0.9;
-  transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
-}
-
-.attack-matrix__arrow:hover:not(:disabled) {
-  opacity: 1;
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-
-.attack-matrix__arrow:disabled {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.attack-matrix__arrow--left {
-  left: 0.6rem;
-}
-
-.attack-matrix__arrow--right {
-  right: 0.6rem;
-}
-
-/* ── Upload dropzone (hero + compact) ────────────────────────────────────── */
+/* ── Upload dropzone ─────────────────────────────────────────────────────── */
 
 .uploader {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.uploader--compact {
-  height: 100%;
 }
 
 .uploader__dropzone {
@@ -1094,15 +1072,6 @@ body {
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.uploader--compact .uploader__dropzone {
-  padding: 1rem 0.75rem;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
 .uploader__dropzone--over {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -1111,11 +1080,6 @@ body {
 .uploader__title {
   font-size: 0.85rem;
   font-weight: 500;
-}
-
-.uploader--compact .uploader__title {
-  font-size: 0.8rem;
-  color: var(--text-dim);
 }
 
 .uploader__hint {
@@ -1616,57 +1580,7 @@ body {
   overflow-y: auto;
 }
 
-/* ── Report panel (bottom-right) ─────────────────────────────────────────── */
-
-.report-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-}
-
-.report-panel__body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.85rem;
-}
-
-.report-panel__current {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.report-panel__filename {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-panel__text {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: var(--bg-raised);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-  padding: 0.75rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-}
-
-/* ── Ingest progress (bottom-left, replaces the unused chat panel) ──────── */
+/* ── Ingest / mapping progress steps ─────────────────────────────────────── */
 
 .progress-steps {
   display: flex;

@@ -16,13 +16,15 @@ import os
 import sys
 import uuid
 
+from app.eval.deleak import deleak_markdown
 from app.eval.ground_truth import REPORTS
 from app.eval.run_eval import _find_pdf
 from app.ingest.indexing import index_report
 from app.ingest.pdf_to_markdown import pdf_to_markdown
 
 OUT = "/data/eval_reports.json"
-DEFAULT = ["meridian-health", "meridian-grove", "openslop"]
+DEFAULT = ["meridian-health", "meridian-grove", "openslop",
+           "dfir-confluence-lockbit", "dfir-rdp-ransomhub", "dfir-bengalseo"]
 
 wanted = sys.argv[1:] or DEFAULT
 existing = json.load(open(OUT)) if os.path.exists(OUT) else {}
@@ -34,7 +36,12 @@ for name in wanted:
         print(f"!! {name}: no PDF matching {gt.pdf_glob}")
         continue
     report_id = str(uuid.uuid4())
-    chunks, skipped = index_report(report_id, os.path.basename(pdf), pdf_to_markdown(pdf))
+    markdown = pdf_to_markdown(pdf)
+    if gt.deleak:
+        markdown, st = deleak_markdown(markdown)
+        print(f"{name:<24} de-leaked: {st['sections_removed'] or 'no'} section(s), "
+              f"{st['inline_ids_removed']} inline id(s)")
+    chunks, skipped = index_report(report_id, os.path.basename(pdf), markdown)
     existing[name] = report_id
     print(f"{name:<16} {report_id}  {len(chunks)} chunks indexed, {skipped} filtered  ({os.path.basename(pdf)})")
 

@@ -10,26 +10,23 @@ from app.ingest.sentences import build_windows
 
 EMBED_TIMEOUT = 240.0
 
-# Called as (chunks_embedded, chunk_count) — immediately with (0, N) when
-# embedding starts, then after each batch — so the caller (app.ingest.jobs) can
-# surface live progress for what's by far the slowest step in the ingest.
+# (chunks_embedded, chunk_count), called immediately with (0, N) and again
+# after every chunk — embedding is by far the slowest ingest step.
 ProgressCallback = Callable[[int, int], None]
 
-# Polled between embedding batches; True aborts the indexing (user cancelled).
+# Polled between chunks; True aborts the indexing (user cancelled).
 AbortCheck = Callable[[], bool]
 
 
 class IndexingAborted(Exception):
-    """Raised when should_abort() turns true mid-indexing. Nothing has been
-    written to Chroma at that point (the upsert is a single call at the end),
-    so an aborted ingest leaves no partial chunks behind."""
+    """Raised when should_abort() turns true mid-indexing. Chroma is written
+    once, at the end, so an aborted ingest leaves no partial chunks behind."""
 
 
 def _chunk_body(chunk: Chunk) -> str:
-    """The chunk text without its breadcrumb line (chunk.text is
-    "<breadcrumb>\\n\\n<body>" when a heading path exists). Windows carry pure
-    sentence semantics — a heading prefix would pull every window's embedding
-    toward the section theme, which is the dilution windows exist to undo."""
+    """The chunk text without its breadcrumb line. Windows must carry pure
+    sentence semantics — a heading prefix pulls every window's embedding toward
+    the section theme, which is the dilution windows exist to undo."""
     return chunk.text.split("\n\n", 1)[1] if chunk.heading_path else chunk.text
 
 
@@ -40,13 +37,10 @@ def _embed_report(
 ) -> tuple[list[list[float]], list[list[str]], list[list[list[float]]]]:
     """(chunk embeddings, window texts per chunk, window embeddings per chunk).
 
-    One /api/embed request per chunk, covering the chunk text plus its
-    sentence windows (typically 4-6 inputs) — in-request batching is the only
-    overhead amortization available on the embed runner's single slot (see
-    build_kb's n_slots=1 note), and per-chunk requests keep the progress
-    callback updating at least as often as the old 4-chunk batches did.
-    Windows roughly double the embedded tokens per report; the wall-time cost
-    lands here, in ingest, where the progress bar already owns it."""
+    One /api/embed request per chunk covering the chunk plus its sentence
+    windows: the embed runner serves a single slot, so batching within a
+    request is the only way to amortize per-request overhead, and per-chunk
+    requests keep progress updating frequently."""
     chunk_embeddings: list[list[float]] = []
     window_texts: list[list[str]] = []
     window_embeddings: list[list[list[float]]] = []
@@ -73,15 +67,11 @@ def index_report(
     on_progress: ProgressCallback | None = None,
     should_abort: AbortCheck | None = None,
 ) -> tuple[list[Chunk], int]:
-    """Chunk a report's extracted markdown and embed+store the chunks in the
-    (separate from the ATT&CK KB) `report_chunks` Chroma collection, tagged
-    with `report_id` so retrieval/mapping can scope a query to one report.
-
-    With `settings.section_filter` on (the default), chunks the chunker tagged
-    as defender guidance (remediation/recommendations) or boilerplate are not
-    embedded or stored at all — they would only produce false-positive
-    mappings, and skipping them also skips the slowest ingest step for them.
-    Returns (indexed chunks, number of chunks skipped)."""
+    """Chunk a report's markdown, embed it, and store the chunks (and their
+    sentence windows) in Chroma, tagged with `report_id` so retrieval can scope
+    to one report. With settings.section_filter on, defender-guidance and
+    boilerplate chunks are neither embedded nor stored. Returns the indexed
+    chunks and how many were skipped."""
     all_chunks = chunk_markdown(markdown)
     if settings.section_filter:
         chunks = [c for c in all_chunks if c.section_role == "content"]
@@ -93,9 +83,9 @@ def index_report(
 
     embeddings, window_texts, window_embeddings = _embed_report(chunks, on_progress, should_abort)
 
-    # Windows first, chunks second: mapping keys on chunk presence, so if the
-    # process dies between the two upserts, orphan windows are harmless while
-    # chunks without windows would silently lose the sub-chunk dense half.
+    # Windows first: retrieval keys on chunk presence, so if the process dies
+    # between the upserts, orphan windows are harmless while chunks without
+    # windows would silently lose the sub-chunk dense half.
     window_ids, window_docs, window_vecs, window_metas = [], [], [], []
     for chunk, texts, vecs in zip(chunks, window_texts, window_embeddings):
         for j, (text, vec) in enumerate(zip(texts, vecs)):

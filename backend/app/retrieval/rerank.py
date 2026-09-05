@@ -1,32 +1,20 @@
-"""Cross-encoder reranker over the fused retrieval pool (pipeline stage 4's
-final refinement).
+"""Cross-encoder reranking of the fused retrieval pool (experimental, off by
+default — see settings.rerank).
 
-Why a reranker and not more candidates: five separate candidate-*budget*
-mechanisms were measured and all failed at menu width 8 (CLAUDE.md, cycles
-6-9), while the raw half-pools already contain 97% of the labelled core
-techniques. The loss is fusion's *selection*, so this re-scores candidates
-retrieval already found rather than adding any.
+It re-scores candidates retrieval already found rather than adding more:
+measurement showed the raw half-pools already contain almost every labelled
+core technique, so the remaining loss is fusion's *selection*.
 
-Local-first: a small ONNX cross-encoder runs in-process on CPU via
-`onnxruntime` + `tokenizers`, both of which chromadb already pulls in — no new
-Python dependency and no network at runtime. If the model files are absent the
-module degrades to a no-op and fusion behaves exactly as before, so a checkout
-without them still works.
+Local-first: a small ONNX cross-encoder runs in-process on CPU via onnxruntime
+and tokenizers, both of which chromadb already pulls in — no new dependency and
+no network at runtime. Absent model files degrade the module to a no-op.
 
-Two measured design points, neither obvious (2026-08-24, cycle 12):
-
-* **Score sentence windows, not the whole chunk.** The same model over whole
-  chunk bodies is a *disaster* — pure-reranker coverage 41 vs fusion's 60 on
-  the three labelled reports — while over sentence windows it is the best
-  selector measured (62-63). A ~1200-char security narrative is nothing like
-  the short queries an MS MARCO cross-encoder was trained on, and a chunk-level
-  score also re-averages away exactly the minority sentences the window half
-  exists to rescue. Each candidate keeps its best window score.
-* **Blend with RRF rather than replacing it.** Pure reranker top-8 wins
-  openslop (+5) but costs grove 3 — the cross-encoder is domain-mismatched
-  often enough that fusion's agreement signal is still worth half the vote.
-  A 50/50 blend of min-max-normalized CE score and normalized RRF score
-  improved 2 of 3 reports and regressed none.
+Two measured design points worth not re-deriving:
+- Score sentence *windows*, not whole chunks. Over ~1200-char narratives this
+  model is far worse than plain fusion; over windows it is the best selector
+  measured.
+- Blend with RRF rather than replacing it. Pure reranking wins on some reports
+  and loses on others; a 50/50 blend never regressed coverage.
 """
 
 import os
@@ -36,9 +24,8 @@ import numpy as np
 
 from app.core.config import settings
 
-# Candidates reranked per chunk, taken best-first by fused RRF score. Measured
-# (cycle 12): 24 matches the full-pool result exactly (coverage 63, 2 reports
-# up / 0 down) at a quarter of the cost, while 16 starts losing techniques.
+# Candidates reranked per chunk, best-first by fused score: 24 matches
+# full-pool reranking exactly at a quarter of the cost; 16 loses techniques.
 RERANK_DEPTH = 24
 # Weight of the cross-encoder against fused RRF in the final ordering.
 RERANK_BLEND = 0.5

@@ -1,0 +1,193 @@
+Report,n,Reconnaissance,Resource Development,Initial Access,Execution,Persistence,Privilege Escalation,Stealth,Defense Impairment,Credential Access,Discovery,Lateral Movement,Collection,Command and Control,Exfiltration,Impact,Not in the report's own ATT&CK list (verify)
+Confluence Exploit Leads to LockBit Ransomware,21,,,T1190  Exploit Public-Facing Application,"T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1072  Software Deployment Tools","T1078.003  Local Accounts
+T1136  Create Account
+T1543.003  Windows Service",,T1218.005  Mshta,T1685.005  Clear Windows Event Logs,"T1003.001  LSASS Memory
+T1552.001  Credentials In Files","T1016  System Network Configuration Discovery
+T1018  Remote System Discovery
+T1033  System Owner/User Discovery
+T1046  Network Service Discovery
+T1057  Process Discovery",T1021.001  Remote Desktop Protocol,,"T1105  Ingress Tool Transfer
+T1219  Remote Access Tools",T1567.002  Exfiltration to Cloud Storage,T1486  Data Encrypted for Impact,T1078.003
+Fake Zoom Ends in Blacksuit Ransomware,35,,,T1189  Drive-by Compromise,"T1047  Windows Management Instrumentation
+T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1204.002  Malicious File
+T1569.002  Service Execution",T1547.001  Registry Run Keys / Startup Folder,"T1134  Access Token Manipulation
+T1548  Abuse Elevation Control Mechanism","T1055  Process Injection
+T1127.001  MSBuild
+T1218.010  Regsvr32
+T1564.001  Hidden Files and Directories",,T1003.001  LSASS Memory,"T1018  Remote System Discovery
+T1033  System Owner/User Discovery
+T1069.001  Local Groups
+T1069.002  Domain Groups
+T1082  System Information Discovery
+T1087.001  Local Account
+T1087.002  Domain Account
+T1135  Network Share Discovery
+T1482  Domain Trust Discovery
+T1518.001  Security Software Discovery","T1021.001  Remote Desktop Protocol
+T1021.002  SMB/Windows Admin Shares
+T1570  Lateral Tool Transfer",T1560.001  Archive via Utility,"T1071.001  Web Protocols
+T1102.001  Dead Drop Resolver
+T1105  Ingress Tool Transfer
+T1572  Protocol Tunneling",T1567.002  Exfiltration to Cloud Storage,"T1486  Data Encrypted for Impact
+T1490  Inhibit System Recovery","T1548, T1055, T1087.002"
+Another Confluence Bites the Dust: Falling to ELPACO-team Ransomware,24,,,T1190  Exploit Public-Facing Application,"T1047  Windows Management Instrumentation
+T1059.001  PowerShell
+T1059.003  Windows Command Shell","T1136  Create Account
+T1136.001  Local Account
+T1543.003  Windows Service","T1068  Exploitation for Privilege Escalation
+T1134.002  Create Process with Token",,"T1112  Modify Registry
+T1685  Disable or Modify Tools
+T1686  Disable or Modify System Firewall","T1003.001  LSASS Memory
+T1003.003  NTDS","T1012  Query Registry
+T1016  System Network Configuration Discovery
+T1018  Remote System Discovery
+T1057  Process Discovery","T1021.001  Remote Desktop Protocol
+T1021.002  SMB/Windows Admin Shares",,"T1071  Application Layer Protocol
+T1105  Ingress Tool Transfer
+T1219  Remote Access Tools",,T1486  Data Encrypted for Impact,T1021.002
+Hide Your RDP: Password Spray Leads to RansomHub Deployment,29,,,"T1078  Valid Accounts
+T1133  External Remote Services","T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1059.005  Visual Basic",T1543.003  Windows Service,,T1070  Indicator Removal,"T1222  File and Directory Permissions Modification
+T1685.005  Clear Windows Event Logs","T1003.001  LSASS Memory
+T1003.006  DCSync
+T1110.003  Password Spraying","T1016  System Network Configuration Discovery
+T1018  Remote System Discovery
+T1046  Network Service Discovery
+T1057  Process Discovery
+T1069.001  Local Groups
+T1069.002  Domain Groups
+T1083  File and Directory Discovery
+T1087.001  Local Account
+T1087.002  Domain Account
+T1482  Domain Trust Discovery","T1021.001  Remote Desktop Protocol
+T1021.002  SMB/Windows Admin Shares
+T1570  Lateral Tool Transfer",,T1219  Remote Access Tools,T1048  Exfiltration Over Alternative Protocol,"T1486  Data Encrypted for Impact
+T1490  Inhibit System Recovery",T1021.002
+Blurring the Lines: Intrusion Shows Connection With Three Major Ransomware Gangs,39,,,,"T1047  Windows Management Instrumentation
+T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1204.002  Malicious File
+T1569.002  Service Execution","T1136  Create Account
+T1136.001  Local Account
+T1543.003  Windows Service
+T1547.001  Registry Run Keys / Startup Folder",T1098.007  Additional Local or Domain Groups,"T1027  Obfuscated Files or Information
+T1036  Masquerading
+T1055  Process Injection
+T1070.006  Timestomp
+T1127.001  MSBuild",T1685  Disable or Modify Tools,"T1003.001  LSASS Memory
+T1003.006  DCSync
+T1555  Credentials from Password Stores","T1016  System Network Configuration Discovery
+T1018  Remote System Discovery
+T1033  System Owner/User Discovery
+T1046  Network Service Discovery
+T1069.001  Local Groups
+T1069.002  Domain Groups
+T1083  File and Directory Discovery
+T1087.001  Local Account
+T1087.002  Domain Account
+T1135  Network Share Discovery
+T1482  Domain Trust Discovery
+T1615  Group Policy Discovery","T1021.001  Remote Desktop Protocol
+T1570  Lateral Tool Transfer","T1119  Automated Collection
+T1560.001  Archive via Utility","T1071.001  Web Protocols
+T1090  Proxy
+T1572  Protocol Tunneling",T1048  Exfiltration Over Alternative Protocol,,"T1055, T1033"
+From a Single Click: How Lunar Spider Enabled a Near Two-Month Intrusion,45,,,T1189  Drive-by Compromise,"T1047  Windows Management Instrumentation
+T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1059.007  JavaScript
+T1204.002  Malicious File
+T1569.002  Service Execution","T1053.005  Scheduled Task
+T1547.001  Registry Run Keys / Startup Folder","T1078.002  Domain Accounts
+T1134  Access Token Manipulation
+T1548.002  Bypass User Account Control","T1027.013  Encrypted/Encoded File
+T1027.016  Junk Code Insertion
+T1036  Masquerading
+T1055  Process Injection
+T1070.004  File Deletion
+T1218.011  Rundll32",T1222.001  Windows Permissions,"T1003.001  LSASS Memory
+T1552.001  Credentials In Files
+T1555.003  Credentials from Web Browsers","T1018  Remote System Discovery
+T1033  System Owner/User Discovery
+T1046  Network Service Discovery
+T1069.001  Local Groups
+T1069.002  Domain Groups
+T1082  System Information Discovery
+T1083  File and Directory Discovery
+T1087.001  Local Account
+T1087.002  Domain Account
+T1135  Network Share Discovery
+T1482  Domain Trust Discovery
+T1518.001  Security Software Discovery","T1021.001  Remote Desktop Protocol
+T1021.002  SMB/Windows Admin Shares
+T1210  Exploitation of Remote Services
+T1570  Lateral Tool Transfer",T1560.001  Archive via Utility,"T1071.001  Web Protocols
+T1105  Ingress Tool Transfer
+T1571  Non-Standard Port","T1020  Automated Exfiltration
+T1048  Exfiltration Over Alternative Protocol
+T1048.003  Exfiltration Over Unencrypted Non-C2 Protocol",,T1020
+Cat's Got Your Files - Lynx Ransomware,21,,,"T1078  Valid Accounts
+T1133  External Remote Services","T1059.001  PowerShell
+T1059.003  Windows Command Shell","T1136.002  Domain Account
+T1543.003  Windows Service",T1098.007  Additional Local or Domain Groups,,,,"T1012  Query Registry
+T1016  System Network Configuration Discovery
+T1018  Remote System Discovery
+T1046  Network Service Discovery
+T1057  Process Discovery
+T1082  System Information Discovery
+T1087.001  Local Account
+T1135  Network Share Discovery",T1021.001  Remote Desktop Protocol,T1560.001  Archive via Utility,T1219  Remote Access Tools,T1567  Exfiltration Over Web Service,"T1486  Data Encrypted for Impact
+T1490  Inhibit System Recovery",T1057
+Apache ActiveMQ Exploit Leads to LockBit Ransomware,15,,,T1190  Exploit Public-Facing Application,"T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1569.002  Service Execution",,T1134  Access Token Manipulation,,"T1112  Modify Registry
+T1686  Disable or Modify System Firewall",T1003.001  LSASS Memory,"T1018  Remote System Discovery
+T1069.002  Domain Groups
+T1087.001  Local Account",T1021.001  Remote Desktop Protocol,,"T1071  Application Layer Protocol
+T1219  Remote Access Tools",,T1486  Data Encrypted for Impact,whole list unverifiable - this PDF's ATT&CK section is an image
+From Bing Search to Ransomware: Bumblebee and AdaptixC2 Deliver Akira,39,,,T1189  Drive-by Compromise,"T1047  Windows Management Instrumentation
+T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1204.002  Malicious File
+T1569.002  Service Execution","T1136  Create Account
+T1543.003  Windows Service",,"T1027.010  Command Obfuscation
+T1036  Masquerading
+T1055  Process Injection
+T1070.004  File Deletion
+T1574.001  DLL",,"T1003.001  LSASS Memory
+T1003.003  NTDS
+T1555  Credentials from Password Stores","T1016  System Network Configuration Discovery
+T1018  Remote System Discovery
+T1033  System Owner/User Discovery
+T1046  Network Service Discovery
+T1069.001  Local Groups
+T1069.002  Domain Groups
+T1082  System Information Discovery
+T1083  File and Directory Discovery
+T1087.001  Local Account
+T1087.002  Domain Account
+T1135  Network Share Discovery
+T1482  Domain Trust Discovery","T1021.001  Remote Desktop Protocol
+T1021.003  Distributed Component Object Model",T1039  Data from Network Shared Drive,"T1071.001  Web Protocols
+T1090  Proxy
+T1219  Remote Access Tools
+T1568.002  Domain Generation Algorithms","T1041  Exfiltration Over C2 Channel
+T1048.001  Exfiltration Over Symmetric Encrypted Non-C2 Protocol","T1486  Data Encrypted for Impact
+T1490  Inhibit System Recovery",T1016
+Part 1 BengalSEO,18,,"T1583.001  Domains
+T1583.006  Web Services
+T1608.006  SEO Poisoning",T1189  Drive-by Compromise,"T1059.001  PowerShell
+T1059.003  Windows Command Shell
+T1059.005  Visual Basic
+T1059.007  JavaScript",,T1053.005  Scheduled Task,"T1027.013  Encrypted/Encoded File
+T1027.014  Polymorphic Code
+T1036.008  Masquerade File Type
+T1497  Virtualization/Sandbox Evasion",,,,,,"T1008  Fallback Channels
+T1071.001  Web Protocols
+T1104  Multi-Stage Channels",,"T1496.001  Compute Hijacking
+T1657  Financial Theft",whole list unverifiable - this PDF's ATT&CK section is an image

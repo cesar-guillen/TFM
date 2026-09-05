@@ -1,8 +1,7 @@
-"""Disk persistence of computed matrices, one JSON file per entry under
-settings.layers_dir. This is what backs the dashboard's matrix library: every
-finished mapping run is saved automatically, and the /matrix editor can save
-manual edits back (PUT) or save a hand-built/imported matrix as a new entry
-(POST) — see the history routes in app.api.routes.matrix."""
+"""On-disk matrix library: one JSON file per saved layer under
+settings.layers_dir. Every finished mapping run is saved automatically, and
+the editor saves manual edits back here (see the history routes in
+app.api.routes.matrix)."""
 
 import json
 import os
@@ -10,18 +9,31 @@ from datetime import datetime, timezone
 
 from app.core.config import settings
 
-_SUMMARY_KEYS = ("id", "name", "filename", "created_at", "updated_at", "technique_count", "duration_seconds")
+_SUMMARY_KEYS = (
+    "id",
+    "name",
+    "filename",
+    "created_at",
+    "updated_at",
+    "technique_count",
+    "duration_seconds",
+)
 
 
 def _path(layer_id: str) -> str:
-    # basename() guards the path — ids arrive via URL in the routes.
+    # basename() guards the path: ids arrive via URL in the routes.
     return os.path.join(settings.layers_dir, f"{os.path.basename(layer_id)}.json")
 
 
 def _write(entry: dict) -> None:
+    """Write via a temporary file and rename, so an interrupted save can never
+    leave a half-written entry behind."""
     os.makedirs(settings.layers_dir, exist_ok=True)
-    with open(_path(entry["id"]), "w") as f:
+    path = _path(entry["id"])
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w") as f:
         json.dump(entry, f)
+    os.replace(tmp_path, path)
 
 
 def _now() -> str:
@@ -35,13 +47,11 @@ def save_layer(
     layer: dict,
     duration_seconds: float | None = None,
 ) -> dict:
-    """Persist a layer under `layer_id`, overwriting any previous entry for it
-    (a re-run of the same report keeps its original created_at). Stamps the
-    layer itself with `tfm_saved_id` so a client holding just the layer (e.g.
-    via GET /api/matrix) can tell which history entry it belongs to and update
-    it instead of saving a duplicate. `duration_seconds` is how long the
-    mapping run took (None for hand-saved matrices); update_layer keeps it
-    untouched, so manual edits don't erase a run's timing."""
+    """Persist a layer, overwriting any previous entry for the same id (a
+    re-run of the same report keeps its original created_at). Stamps the layer
+    with `tfm_saved_id` so a client holding only the layer knows which entry it
+    belongs to. `duration_seconds` is the mapping run's wall time, None for
+    hand-saved matrices."""
     existing = load_layer(layer_id)
     layer["tfm_saved_id"] = layer_id
     entry = {
@@ -59,9 +69,9 @@ def save_layer(
 
 
 def update_layer(layer_id: str, name: str, layer: dict) -> dict | None:
-    """Overwrite an existing entry's name + layer (manual edits from the
-    editor), keeping its filename and created_at. None if the id is unknown —
-    the route turns that into a 404 rather than resurrecting a deleted entry."""
+    """Overwrite an existing entry's name and layer, keeping its filename,
+    created_at and duration. None if the id is unknown, which the route turns
+    into a 404 rather than resurrecting a deleted entry."""
     entry = load_layer(layer_id)
     if entry is None:
         return None
@@ -77,9 +87,8 @@ def update_layer(layer_id: str, name: str, layer: dict) -> dict | None:
 
 
 def list_layers() -> list[dict]:
-    """Summaries (no layer body — the list endpoint stays light) of every
-    saved entry, most recently touched first. Unreadable files are skipped,
-    not fatal."""
+    """Summaries (without the layer body) of every saved entry, most recently
+    touched first. Unreadable files are skipped rather than fatal."""
     if not os.path.isdir(settings.layers_dir):
         return []
     summaries = []

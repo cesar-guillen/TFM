@@ -1,0 +1,39 @@
+report,technique_id,technique_name,score,flagged,instances,sections,best_evidence
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1036.012,Browser Fingerprint,100,0,4,BengalSEO Part 1: Anatomy of the Operation > Traffic Distribution System,fingerprints the browser
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1059,,100,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1059.007,JavaScript,100,1,6,BengalSEO Part 1: Anatomy of the Operation > Payload Delivery | BengalSEO Part 1: Anatomy of the Operation > SEO Capabilities Analysis > DOM Injection,JavaScript dropper
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1204,User Execution,100,0,1,BengalSEO Part 1: Anatomy of the Operation > Payload Delivery,click the download button
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1593.003,Code Repositories,100,0,1,BengalSEO Part 1: Anatomy of the Operation > Github Infrastructure,Table of GitHub accounts
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1608.006,SEO Poisoning,100,1,7,BengalSEO Part 1: Anatomy of the Operation > Case Summary | BengalSEO Part 1: Anatomy of the Operation > Key Takeaways | BengalSEO Part 1: Anatomy of the Operation > Lure Pages | BengalSEO Part 1: Anatomy of the Operation > SEO Capabilities Analysis,SEO Poisoning
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1596,,95,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1596.002,WHOIS,95,0,1,BengalSEO Part 1: Anatomy of the Operation > Domain & Certificate Registration,reverse WHOIS lookups
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1036,,90,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1071,,90,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1071.001,Web Protocols,90,1,3,BengalSEO Part 1: Anatomy of the Operation > Traffic Distribution System,HTTP POST request
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1584.001,Domains,90,1,3,BengalSEO Part 1: Anatomy of the Operation > Domain & Certificate Registration,hundreds of domains
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1593.002,Search Engines,90,0,1,BengalSEO Part 1: Anatomy of the Operation > SEO Capabilities Analysis,Ahrefs service
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1608.005,Link Target,90,1,3,BengalSEO Part 1: Anatomy of the Operation > Payload Delivery | BengalSEO Part 1: Anatomy of the Operation > Traffic Distribution System,base62 encoding
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1036.008,Masquerade File Type,80,0,1,BengalSEO Part 1: Anatomy of the Operation > Payload Delivery,posing as EXE
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1090,Proxy,80,0,1,BengalSEO Part 1: Anatomy of the Operation > Traffic Distribution System,rotating network
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1583.001,Domains,80,1,6,BengalSEO Part 1: Anatomy of the Operation > Domain & Certificate Registration | BengalSEO Part 1: Anatomy of the Operation > Github Infrastructure | BengalSEO Part 1: Anatomy of the Operation > Timeline and Trend Analysis,<mark>`wc.ci`</mark> is another domain registered by BengalSEO
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1587,,80,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1587.001,Malware,80,0,1,BengalSEO Part 1: Anatomy of the Operation > Key Takeaways,custom malware strain
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1593,Search Open Websites/Domains,80,0,1,BengalSEO Part 1: Anatomy of the Operation > Infrastructure and Web Components,search engine results
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1598,,80,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1598.003,Spearphishing Link,80,0,1,BengalSEO Part 1: Anatomy of the Operation > SEO Capabilities Analysis,spamming hyperlinks
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1584,,75,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1608,,70,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1568,,60,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1568.002,Domain Generation Algorithms,60,1,2,BengalSEO Part 1: Anatomy of the Operation > Timeline and Trend Analysis,ustechnio series
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1584.002,DNS Server,60,0,1,BengalSEO Part 1: Anatomy of the Operation > Domain & Certificate Registration,shifted to a hostmaza
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1583,,50,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1678,Delay Execution,50,0,1,BengalSEO Part 1: Anatomy of the Operation > SEO Capabilities Analysis > DOM Injection,"setTimeout(() => location.reload(), 1000);"
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1189,Drive-by Compromise,20,1,1,BengalSEO Part 1: Anatomy of the Operation > Traffic Distribution System,malicious service
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1195,Supply Chain Compromise,20,1,1,BengalSEO Part 1: Anatomy of the Operation > Delivery Chain,delivery chain
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1583.008,Malvertising,20,1,2,BengalSEO Part 1: Anatomy of the Operation > Case Summary | BengalSEO Part 1: Anatomy of the Operation > SEO Capabilities Analysis > DOM Injection,SEO poisoning
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1588,,20,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1588.004,Digital Certificates,20,1,1,BengalSEO Part 1: Anatomy of the Operation > Timeline and Trend Analysis,SSL/TLS certificate
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1590,,20,0,0,,
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1590.001,Domain Properties,20,1,1,BengalSEO Part 1: Anatomy of the Operation > Domain & Certificate Registration,campaign patterns
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1591,Gather Victim Org Information,20,1,1,BengalSEO Part 1: Anatomy of the Operation > Case Summary,gathering information
+dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation,T1608.004,Drive-by Target,20,1,1,BengalSEO Part 1: Anatomy of the Operation > Traffic Distribution System,malicious landing page

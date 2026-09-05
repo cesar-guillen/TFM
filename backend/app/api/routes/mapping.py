@@ -1,6 +1,6 @@
+import logging
 import os
 import time
-
 from typing import Literal
 
 import httpx
@@ -26,25 +26,14 @@ from app.mapping.jobs import (
 from app.mapping.mapper import MappingAborted, map_report
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class MapOptions(BaseModel):
-    """Per-run mapping options (POST body, all optional — an empty/absent body
-    keeps the configured defaults)."""
+    """Per-run overrides; each None falls back to the configured default."""
 
-    # Verification mode: "off" (no judging), "demote" (flagged mappings kept
-    # at a near-floor score with a marked comment), "drop" (flagged mappings
-    # removed) — see settings.verify_mode for the measured trade-offs.
-    # None = the VERIFY_MODE default.
     verify_mode: Literal["off", "demote", "drop"] | None = None
-    # Verdict architecture: "menu" (one call per chunk, all candidates at
-    # once) or "independent" (one small call per candidate) — see
-    # settings.verdict_mode for the measured trade-offs. None = the
-    # VERDICT_MODE default.
     verdict_mode: Literal["menu", "independent"] | None = None
-    # Prompt family: "incident" (the intruder is the adversary) or "pentest"
-    # (the testers play the adversary; un-exploited findings aren't evidence).
-    # None = the REPORT_TYPE default.
     report_type: Literal["incident", "pentest"] | None = None
 
 
@@ -54,14 +43,11 @@ def _process(
     verdict: str | None = None,
     report_type: str | None = None,
 ) -> None:
-    """Background stage 6+7 run; mirrors the ingest job pattern (poll via
-    GET /reports/{report_id}/map/status) since mapping is minutes-slow on CPU."""
+    """Background mapping + aggregation run, polled via
+    GET /reports/{report_id}/map/status."""
     try:
-        # If the chat model isn't resident (first run after startup racing the
-        # warm-up thread, or evicted after idle under a KEEP_ALIVE duration),
-        # the first chunk verdicts would silently absorb the whole model-load
-        # wait. Surface it as its own job phase instead, and keep
-        # app.core.warmup current so the UI can word it per-device.
+        # Surface a cold model as its own phase instead of silently absorbing
+        # the load into the first chunk's verdict.
         if not warmup.is_chat_model_loaded():
             update_job(report_id, status="warming")
             warmup.mark_loading()
@@ -72,17 +58,16 @@ def _process(
                 raise
             warmup.mark_ready(warmup.detect_device())
 
-        # The model-load above can't be interrupted mid-flight; honor a cancel
-        # that arrived while it (or job scheduling) was underway.
+        # The model load can't be interrupted; honor a cancel that arrived
+        # while it was underway.
         if is_cancel_requested(report_id):
             raise MappingAborted()
 
         update_job(report_id, status="retrieving")
 
         def on_progress(chunks_mapped: int, chunk_count: int, mappings_so_far) -> None:
-            # Re-aggregate and publish after every chunk so the dashboard
-            # matrix fills in live while the run is still going. Cheap: a few
-            # dozen mappings per report.
+            # Re-aggregate after every chunk so the dashboard matrix fills in
+            # live. Cheap: a few dozen mappings per report.
             partial = aggregate_mappings(mappings_so_far)
             matrix.set_current_layer(partial)
             update_job(
@@ -105,50 +90,48 @@ def _process(
         update_job(report_id, status="aggregating")
         layer = aggregate_mappings(mappings)
 
-        # Name the finished layer after the report (the aggregate default is
-        # generic) and persist it to the on-disk history, so it stays openable
-        # after the next upload replaces the current layer.
         ingest_job = get_ingest_job(report_id)
         source_filename = ingest_job.filename if ingest_job else report_id
         layer["name"] = os.path.splitext(source_filename)[0]
 
-        # Save first: save_layer stamps `tfm_saved_id` into the layer dict, so
-        # the published current layer tells the editor which entry to update.
+        # Save first: save_layer stamps tfm_saved_id into the layer, so the
+        # published current layer tells the editor which entry to update.
         job = get_job(report_id)
         duration = round(time.time() - job.started_at, 1) if job else None
-        history.save_layer(report_id, layer["name"], source_filename, layer, duration_seconds=duration)
+        history.save_layer(
+            report_id, layer["name"], source_filename, layer, duration_seconds=duration
+        )
         matrix.set_current_layer(layer)
         update_job(report_id, status="done", layer=layer)
     except MappingAborted:
-        # User cancelled: drop the partial layer published during the run so a
-        # half-mapped matrix doesn't linger as "current". Nothing is saved to
-        # the library (only completed runs are).
+        # Drop the partial layer published during the run; only completed runs
+        # are saved to the library.
         matrix.clear_current_layer()
         update_job(report_id, status="cancelled", layer=None)
-    except httpx.HTTPError as exc:
+    except httpx.HTTPError:
         update_job(
             report_id,
             status="error",
-            error=(
-                f"Mapping failed talking to Ollama — is '{settings.ollama_model}' pulled? ({exc})"
-            ),
+            error=f"Mapping failed talking to Ollama — is '{settings.ollama_model}' pulled?",
         )
-    except Exception as exc:  # surface any other failure to the poller instead of dying silently
-        update_job(report_id, status="error", error=str(exc))
+    except Exception:
+        logger.exception("mapping failed for report %s", report_id)
+        update_job(report_id, status="error", error="Mapping failed — see the backend logs.")
 
 
 @router.post("/reports/{report_id}/map")
 def start_mapping(
     report_id: str, background_tasks: BackgroundTasks, options: MapOptions | None = None
 ):
-    """Kick off LLM mapping for an ingested report. Returns immediately; poll
-    the status endpoint for progress and the resulting layer. The optional
-    JSON body carries per-run options (see MapOptions)."""
+    """Start LLM mapping for an ingested report. Returns immediately; poll the
+    status endpoint for progress and the resulting layer."""
     ingest_job = get_ingest_job(report_id)
     if ingest_job is None:
         raise HTTPException(status_code=404, detail="Unknown report_id")
     if ingest_job.status != "done":
-        raise HTTPException(status_code=409, detail=f"Report is not ingested yet (status: {ingest_job.status})")
+        raise HTTPException(
+            status_code=409, detail=f"Report is not ingested yet (status: {ingest_job.status})"
+        )
 
     existing = get_job(report_id)
     if existing is not None and existing.status not in TERMINAL_STATUSES:
@@ -167,9 +150,8 @@ def start_mapping(
 
 @router.post("/reports/{report_id}/map/cancel")
 def cancel_mapping(report_id: str):
-    """Ask a running mapping job to stop. Queued chunks are dropped right away;
-    at most MAP_WORKERS in-flight verdicts finish server-side and are
-    discarded. No-op if the job already finished."""
+    """Ask a running mapping job to stop. Queued chunks are dropped; verdicts
+    already in flight finish server-side and are discarded."""
     job = get_job(report_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No mapping job for this report_id")
@@ -188,11 +170,8 @@ def mapping_status(report_id: str):
         "status": job.status,
         "chunk_count": job.chunk_count,
         "chunks_mapped": job.chunks_mapped,
-        "layer": job.layer,  # partial while status == "mapping", final at "done"
+        "layer": job.layer,  # partial while mapping, final at "done"
         "error": job.error,
-        # Ticks while the job runs, frozen at the final duration once terminal.
         "elapsed_seconds": round((job.finished_at or time.time()) - job.started_at, 1),
-        # Per-phase durations (warming/retrieving/mapping/aggregating), the
-        # running phase included at its elapsed-so-far.
         "step_seconds": step_seconds_snapshot(job),
     }

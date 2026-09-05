@@ -1,15 +1,17 @@
-"""LLM mapping (pipeline stage 6): decide, per chunk, which of the hybrid
-retrieval candidates the chunk text actually evidences.
+"""LLM mapping: decide, per chunk, which retrieval candidates the chunk text
+actually evidences.
 
-Grounding rules (the hallucination mitigations from CLAUDE.md):
-- The model only ever sees candidates that hybrid retrieval produced for that
-  chunk, and its output is schema-constrained to pick from *those ids only*
-  (enum in the JSON schema) — it cannot name a technique it wasn't offered.
-- Anything else the model does wrong (a hallucinated id would require a schema
-  violation, but belt-and-braces) is dropped by the id validation here.
-- Every accepted mapping carries the model's quoted evidence plus the chunk's
-  heading breadcrumb and id, preserving the evidence-traceability chain
-  (technique -> chunk -> char span in the source markdown).
+Three layers keep the output grounded:
+- the model only ever sees candidates hybrid retrieval produced for that chunk,
+  and the JSON schema constrains technique_id to an enum of those ids, so it
+  cannot name a technique it was not offered;
+- every mapping must quote its evidence, and the quote is validated against the
+  chunk text (see _evidence_in_chunk) — a fabricated or paraphrased quote is
+  dropped, which is what keeps the free-text reason honest;
+- an optional verification pass re-judges each accepted mapping on its own.
+
+Every accepted mapping carries its quote plus the chunk's id and heading
+breadcrumb, preserving the technique -> chunk -> char span traceability chain.
 """
 
 import logging
@@ -23,18 +25,11 @@ import httpx
 from app.core.chroma import get_attack_collection, get_report_chunks_collection
 from app.core.config import settings
 from app.core.llm import CHAT_TIMEOUT, chat_json, resolve_map_workers
-from app.retrieval.retrieve import TechniqueMatch, search_techniques_for_report
+from app.retrieval.retrieve import ATTACK_ID_RE, TechniqueMatch, search_techniques_for_report
 
-# Candidate count and description length are settings (MAP_CANDIDATES /
-# MAP_DESC_CHARS): prompt reading (prefill) dominates a chunk's cost on CPU,
-# so the CPU compose profiles run leaner values than the full-quality
-# defaults (see app.core.config).
-
-# Confidence wording shared by the two menu-mode prompts (incident + pentest).
-# An anchored "spread the scores 60-100" rubric was tried 2026-07-24 and
-# REVERTED: it worked (median 90→80) but cost recall on Meridian Health (exact
-# 14.0→12.2/24, N=5 A/B) — the user judged the accuracy loss not worth the
-# heat-scale variety, so this is the original, recall-preserving wording.
+# Confidence wording shared by both menu-mode prompts. An anchored "spread the
+# scores" rubric was tried and reverted: it spread the scores as intended but
+# cost recall.
 _CONFIDENCE_LINE = (
     "Give each mapping a confidence score from 0 to "
     "100 reflecting how directly the excerpt shows the activity — higher when "
@@ -65,14 +60,9 @@ SYSTEM_PROMPT = (
     "when the mention is brief. " + _CONFIDENCE_LINE
 )
 
-# Pentest/red-team variant (report_type="pentest" on POST /reports/{id}/map):
-# the same validated rules — conservative, candidate-independence, mechanism
-# precision, inline-citation evidence, shared confidence rubric — with the
-# actor-centric rule recast for assessments: the *testers* play the adversary
-# (typically narrating in the first person), and un-exploited findings are
-# the pentest analogue of the incident prompt's defender-activity exclusion
-# (a report saying a host is *vulnerable* to something does not evidence the
-# technique being used).
+# Pentest variant: the same rules with the actor recast — the testers play the
+# adversary, and findings merely identified but not exploited are the pentest
+# analogue of the incident prompt's defender-activity exclusion.
 PENTEST_SYSTEM_PROMPT = (
     "You are a cybersecurity analyst mapping excerpts of a penetration-test "
     "or red-team report to MITRE ATT&CK techniques. The testers play the "
@@ -101,24 +91,21 @@ PENTEST_SYSTEM_PROMPT = (
 
 REPORT_TYPES = ("incident", "pentest")
 
-# Called as (chunks_mapped, chunk_count, mappings_so_far) after each chunk
-# resolves; mappings_so_far is a report-ordered snapshot of every accepted
-# mapping to date, so the caller can publish a live partial matrix.
+# (chunks_mapped, chunk_count, report-ordered mappings so far), after every
+# chunk — lets the caller publish a live partial matrix.
 ProgressCallback = Callable[[int, int, list["ChunkMapping"]], None]
-# Fired once, right before a named post-verdict phase starts (currently just
-# "filtering" — the verification pass) — lets the job registry surface it as
-# its own status instead of the phase running invisibly inside "mapping".
+
+# Fired when a named post-verdict phase starts, so the job registry can surface
+# it as its own status instead of it running invisibly inside "mapping".
 PhaseCallback = Callable[[str], None]
 
 # Polled before each chunk's LLM call; True aborts the run (user cancelled).
 AbortCheck = Callable[[], bool]
 
 
-# A mapping whose own reason concedes the excerpt lacks the evidence ("The
-# excerpt does not explicitly mention DNS communication, but...") — observed
-# repeatedly from llama3.1:8b as low-confidence hedges despite the prompt
-# forbidding plausibility mappings. The negation is about the excerpt's
-# evidence, so it doubles as a mechanical confession detector.
+# A mapping whose own reason concedes the excerpt lacks the evidence ("the
+# excerpt does not explicitly mention..."), which small models emit as
+# low-confidence hedges despite the prompt forbidding plausibility mappings.
 NO_EVIDENCE_RE = re.compile(
     r"(excerpt|report|text) (does not|doesn'?t)"
     r"|no explicit(ly)? (mention|statement|evidence|indication)"
@@ -143,14 +130,12 @@ class ChunkMapping:
     heading_path: str
     technique_id: str
     technique_name: str
-    confidence: int  # 0-100, the model's own confidence; used directly as the cell score
+    confidence: int  # 0-100, the model's own; used directly as the cell score
     evidence: str
-    reason: str = ""  # the model's one-sentence justification for the mapping
-    # Set when the verification pass rejects this mapping in "demote" mode
-    # (kept, but capped near-floor) — carried as structured state rather than
-    # a text prefix on `reason`, so aggregate_mappings can surface it as a
-    # layer-metadata flag (rendered as a yellow-outlined cell) without
-    # polluting the human-readable evidence comment.
+    reason: str = ""  # the model's one-sentence justification
+    # Set when the verification pass rejects this mapping in "demote" mode.
+    # Structured state rather than a prefix on `reason`, so aggregation can
+    # surface it as layer metadata without polluting the evidence comment.
     flagged: bool = False
 
 
@@ -160,12 +145,10 @@ def _normalize(text: str) -> str:
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
-# Max tokens allowed between consecutive quote tokens in the chunk. Big enough
-# to absorb condensed parentheticals and inline citations ("leveraging Windows
-# Command Prompt [T1059.003] and/or PowerShell" condensed to "leverage
-# PowerShell" needs 8 — the bracket id alone costs 2 tokens), small enough
-# that the quote still has to trace one local region — tokens scattered
-# across the chunk (a fabricated quote) stay rejected.
+# Max tokens allowed between consecutive quote tokens. Wide enough to absorb
+# condensed parentheticals and inline citations, tight enough that the quote
+# must still trace one local region — tokens scattered across the chunk (a
+# fabricated quote) stay rejected.
 _EVIDENCE_MAX_GAP = 8
 
 
@@ -185,13 +168,13 @@ def _tokens_match(a: str, b: str) -> bool:
 
 
 def _evidence_in_chunk(evidence: str, chunk: str) -> bool:
-    """The quote must actually occur in the excerpt. Catches a small model
-    'quoting' a candidate's description instead of the report (observed with
-    llama3.2:3b: it returned a technique's own description text as evidence
-    for a technique the chunk never showed). Exact whitespace/case-insensitive
-    containment first; failing that, a gap-bounded token subsequence, because
-    models legitimately condense quotes ("HTTP and HTTPS" — observed with
-    llama3.1:8b — for a sentence naming both protocols with parentheticals)."""
+    """Whether the quote actually occurs in the excerpt — the gate that catches
+    a model quoting a candidate's description instead of the report.
+
+    Three tiers, because models legitimately condense a quote even at
+    temperature 0: exact (whitespace- and case-insensitive) containment, then a
+    gap-bounded token subsequence, then a single-window check for very short
+    quotes. Locality is the load-bearing property throughout."""
     if not evidence:
         return False
     if _normalize(evidence) in _normalize(chunk):
@@ -215,14 +198,11 @@ def _evidence_in_chunk(evidence: str, chunk: str) -> bool:
             pos += 1 + hit
         else:
             return True
-    # Third tier: a short quote whose distinctive words (>=4 chars) all appear
-    # somewhere in the chunk. Handles the 8b model canonicalizing a described
-    # artifact to its standard name — it maps T1003.008 correctly but quotes
-    # "/etc/shadow" for a chunk that says "shadow password file" (distinctive
-    # token "shadow" is present; "etc" is format noise). Kept narrow — <=3
-    # quote tokens — so a long fabricated quote can't slip past on a couple of
-    # shared common words; technique_id is already enum-constrained to this
-    # chunk's retrieval candidates, which bounds the blast radius further.
+    # Third tier: a very short quote whose distinctive words all co-occur
+    # inside one window. Handles a model canonicalizing an artifact to its
+    # standard name ("/etc/shadow" for "shadow password file"). Deliberately
+    # narrow — at most 3 tokens, and they must share a window — so a longer
+    # fabricated quote cannot slip past on a few common words.
     distinctive = [q for q in quote if len(q) >= 4]
     if distinctive and len(quote) <= 3 and all(
         any(_tokens_match(t, q) for t in text) for q in distinctive
@@ -231,25 +211,20 @@ def _evidence_in_chunk(evidence: str, chunk: str) -> bool:
     return False
 
 
-# Confidence to assume when a salvaged/truncated verdict lands without a usable
-# score. Low-ish: a mapping we couldn't read the model's confidence for should
-# not outrank one we could.
+# Assumed when a salvaged (truncated) verdict lands without a usable score: a
+# mapping whose confidence we could not read must not outrank one we could.
 SALVAGED_CONFIDENCE = 30
 
-# A mapping the model itself scores below this is a self-declared non-mapping
-# and is dropped — observed in a real run: 8 techniques mapped at confidence 0
-# off a title-page banner, each with a comment explaining the report was
-# synthetic. The rubric's genuine "weak but real" tier sits at ~30, so a floor
-# of 10 only removes declared junk.
+# Below this the model has declared its own mapping a non-mapping. The genuine
+# "weak but real" tier sits around 30, so this floor only removes junk.
 MIN_CONFIDENCE = 10
 
 
 def _response_schema(candidate_ids: list[str]) -> dict:
-    """Schema for one chunk's verdict; technique_id is an enum of this chunk's
-    candidates, so the constrained decoder can't invent an id. The size bounds
-    (maxItems / maxLength) keep a rambling model from generating until it hits
-    the num_predict cap, which truncates the JSON mid-token — chat_json
-    salvages that, but a verdict cut short still loses its tail mappings."""
+    """Schema for one chunk's verdict. technique_id is an enum of this chunk's
+    candidates, so the constrained decoder cannot invent an id; the size bounds
+    keep a rambling model from decoding into the num_predict cap, which would
+    truncate the JSON and cost the verdict its tail mappings."""
     return {
         "type": "object",
         "properties": {
@@ -273,8 +248,8 @@ def _response_schema(candidate_ids: list[str]) -> dict:
 
 
 def _trim_description(document: str) -> str:
-    """KB documents are 'Name\\n\\nDescription…'; keep a word-safe prefix of the
-    description part, enough to disambiguate without blowing up the prompt."""
+    """KB documents are a name and description; keep a word-safe prefix of the
+    description, enough to disambiguate without blowing up the prompt."""
     limit = settings.map_desc_chars
     description = document.split("\n\n", 1)[-1].strip()
     if len(description) <= limit:
@@ -292,21 +267,11 @@ def _candidate_block(candidates: list[TechniqueMatch], descriptions: dict[str, s
 
 logger = logging.getLogger(__name__)
 
-# Optional second-pass verification (per-run `verify_mode` on the map
-# endpoint, default settings.verify_mode): the verdict stage's residual FPs
-# are cousin-substitutions the model is *confident* about — real evidence
-# mapped to a merely-adjacent candidate with a reason that restates the
-# excerpt instead of justifying the technique ("misconfigured SUID binary"
-# mapped to Domain Controller Authentication). Prompt rules against this
-# measured as pure regressions (they suppressed marginal true verdicts while
-# every confident FP survived), so the fix is a task change: one yes/no
-# judgment per accepted mapping, with the technique description in context.
-# Measured N=8 (llama3.1:8b, both eval reports, rejections removed):
-# unexpected mappings roughly halve; exact recall pays ~1.5 techniques. The
-# per-run mode picks what a rejection does: "drop" removes it (strict),
-# "demote" keeps it capped at DEMOTED_CONFIDENCE with a marked comment
-# (balanced — nothing vanishes, suspected FPs just fall to the faint end of
-# the heat scale), "off" skips judging entirely.
+# Verification judge. The verdict stage's residual false positives are
+# cousin-substitutions the model is *confident* about — real evidence mapped to
+# a merely-adjacent candidate — and prompt rules against them measured as pure
+# regressions. So the fix is a change of task instead: one yes/no judgment per
+# accepted mapping, with the technique's own description in context.
 VERIFY_SYSTEM_PROMPT = (
     "You audit proposed MITRE ATT&CK technique mappings. Judge whether the "
     "report passage shows the attacker using the specific mechanism the "
@@ -324,9 +289,8 @@ VERIFY_SYSTEM_PROMPT = (
     "inhibited."
 )
 
-# Pentest variant of the judge: same specificity rules, actor recast to the
-# testers, and "identified but not exploited" joins the answer-no list (the
-# pentest analogue of defender activity).
+# Pentest variant of the judge: same specificity rules, actor recast, and
+# "identified but not exploited" joins the answer-no list.
 PENTEST_VERIFY_SYSTEM_PROMPT = (
     "You audit proposed MITRE ATT&CK technique mappings from a "
     "penetration-test or red-team report, where the testers play the "
@@ -351,19 +315,16 @@ _VERIFY_SCHEMA = {
 
 VERIFY_MODES = ("off", "demote", "drop")
 
-# Score a judge-rejected mapping is capped at in "demote" mode: below the
-# rubric's "low" (30) so flagged cells sort/render as the weakest tier, above
-# 0 so they don't read as the score-0 junk cells this pipeline once produced.
+# Score a rejected mapping is capped at in "demote" mode: below the "low" tier
+# so flagged cells render faintest, above 0 so they don't read as junk.
 DEMOTED_CONFIDENCE = 20
 
 
 def _evidence_context(evidence: str, chunk: str, radius: int = 220) -> str:
     """The sentence-scale region of the chunk around the evidence quote. The
     judge must see the clause the quote anchors, not the bare fragment: the
-    mapper tends to quote 2-4 word anchors ('spearphishing email', 'Kerberos
-    service tickets'), and judged in isolation those made it reject
-    description-obvious true mappings (measured: T1566.001 went 0/8 on the
-    Health report with quote-only verification)."""
+    mapper tends to quote 2-4 word anchors, and judged in isolation those made
+    it reject obviously-correct mappings."""
     lo_chunk, lo_ev = chunk.lower(), evidence.lower().strip()
     idx = lo_chunk.find(lo_ev)
     if idx < 0:
@@ -428,10 +389,8 @@ def _verify_mapping(
     return True
 
 
-# Per-candidate ("independent") verdict mode — see settings.verdict_mode.
-# Shares the menu prompt's validated rules (conservative, actor-centric,
-# mechanism-precision, inline-citation, confidence rubric) minus the
-# menu-specific selection language.
+# Per-candidate ("independent") verdict mode — see settings.verdict_mode. The
+# menu prompt's rules minus its selection language.
 INDEPENDENT_SYSTEM_PROMPT = (
     "You are a cybersecurity analyst checking whether an excerpt of a "
     "security report gives concrete evidence of one specific MITRE ATT&CK "
@@ -456,8 +415,7 @@ INDEPENDENT_SYSTEM_PROMPT = (
     "not apply, return applies=false and nothing else."
 )
 
-# Pentest variant of the independent-mode prompt — same actor recast as
-# PENTEST_SYSTEM_PROMPT.
+# Pentest variant of the independent-mode prompt.
 PENTEST_INDEPENDENT_SYSTEM_PROMPT = (
     "You are a cybersecurity analyst checking whether an excerpt of a "
     "penetration-test or red-team report gives concrete evidence of one "
@@ -484,9 +442,9 @@ PENTEST_INDEPENDENT_SYSTEM_PROMPT = (
     "not apply, return applies=false and nothing else."
 )
 
-# "applies" is the only required field so a false verdict can stop decoding
-# immediately instead of filling reason/evidence with filler tokens; a true
-# verdict missing its evidence is dropped by the standard validation gates.
+# "applies" is the only required field, so a false verdict stops decoding
+# immediately instead of filling the other fields with filler tokens; a true
+# verdict missing its evidence is dropped by the standard gates.
 _INDEPENDENT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -500,10 +458,9 @@ _INDEPENDENT_SCHEMA = {
 
 
 def _independent_prompt(chunk_text: str, candidate: TechniqueMatch, description: str) -> str:
-    """Chunk first, candidate last: every candidate of a chunk then shares a
-    long identical prefix (system prompt + excerpt), which Ollama's per-slot
-    prefix cache serves without recomputation (measured: 1328ms cold vs 43ms
-    cached prefill) — the whole reason per-candidate calls are affordable."""
+    """Chunk first, candidate last: every candidate of a chunk then shares one
+    long identical prefix, which Ollama's per-slot prefix cache serves without
+    recomputing it. That is what makes per-candidate calls affordable."""
     return (
         "Report excerpt:\n"
         "---\n"
@@ -514,6 +471,88 @@ def _independent_prompt(chunk_text: str, candidate: TechniqueMatch, description:
         "Does the excerpt give concrete evidence of the attacker using this "
         "specific technique?"
     )
+
+
+@dataclass(frozen=True)
+class _Prompts:
+    """The prompt family a run uses. The pentest variants recast the actor —
+    the testers play the adversary, and findings merely identified are not
+    evidence — and everything downstream of the prompts is identical."""
+
+    menu: str
+    independent: str
+    verify: str
+    verify_actor: str
+
+
+def _prompts_for(report_type: str) -> _Prompts:
+    if report_type == "pentest":
+        return _Prompts(
+            menu=PENTEST_SYSTEM_PROMPT,
+            independent=PENTEST_INDEPENDENT_SYSTEM_PROMPT,
+            verify=PENTEST_VERIFY_SYSTEM_PROMPT,
+            verify_actor="the testers",
+        )
+    return _Prompts(
+        menu=SYSTEM_PROMPT,
+        independent=INDEPENDENT_SYSTEM_PROMPT,
+        verify=VERIFY_SYSTEM_PROMPT,
+        verify_actor="the attacker",
+    )
+
+
+def _run_verification(
+    mappings: list[ChunkMapping],
+    mode: str,
+    descriptions: dict[str, str],
+    chunk_text: dict[str, str],
+    client: httpx.Client,
+    prompts: _Prompts,
+) -> list[ChunkMapping]:
+    """Judge every accepted mapping once, then drop or demote the rejects.
+
+    Runs as its own phase after all verdicts have landed rather than
+    interleaved per chunk, for two measured reasons: judge calls landing
+    mid-verdict evict the verdict prompt's cached prefix from Ollama's slots,
+    and they change decode batch composition, which perturbs the verdicts
+    themselves.
+    """
+
+    def judge(m: ChunkMapping) -> ChunkMapping | None:
+        # A passage that cites this exact id inline (`[T1685.005]`) is the
+        # strongest evidence class this pipeline recognizes elsewhere —
+        # EXPLICIT_IDS injection in retrieve.py seats a cited id above any
+        # retrieval score for exactly this reason. The verification judge
+        # doesn't know that and can reject it anyway (measured 2026-09-05 on
+        # 3 real DFIR Report intrusions under the current independent+demote
+        # default: 16 mappings demoted despite being in DFIR's own table, and
+        # several of the judge's own stated reasons for OTHER mappings read
+        # "Explicitly cited ATT&CK id [...]" — the model sees the citation,
+        # the judge overrules it anyway). Skip judging when the source chunk
+        # literally cites this mapping's own id, scanning the chunk text
+        # (not the model's evidence quote) so this doesn't depend on
+        # quoting behavior, same source EXPLICIT_IDS itself reads.
+        cited_ids = {mm.group(0).upper() for mm in ATTACK_ID_RE.finditer(chunk_text[m.chunk_id])}
+        if m.technique_id.upper() in cited_ids:
+            return m
+        if _verify_mapping(
+            m,
+            descriptions.get(m.technique_id, ""),
+            chunk_text[m.chunk_id],
+            client,
+            system=prompts.verify,
+            actor=prompts.verify_actor,
+        ):
+            return m
+        if mode == "demote":
+            m.confidence = min(m.confidence, DEMOTED_CONFIDENCE)
+            m.flagged = True
+            return m
+        return None
+
+    with ThreadPoolExecutor(max_workers=resolve_map_workers()) as pool:
+        judged = list(pool.map(judge, mappings))
+    return [m for m in judged if m is not None]
 
 
 def _chunk_prompt(chunk_text: str, candidates: list[TechniqueMatch], descriptions: dict[str, str]) -> str:
@@ -542,18 +581,13 @@ def map_report(
     report_type: str | None = None,
     top_k: int | None = None,
 ) -> list[ChunkMapping]:
-    """Run stage 6 for one indexed report: hybrid candidates per chunk, LLM
-    verdicts, validated and flattened into ChunkMappings. `on_phase` fires once
-    when a named post-verdict phase starts (currently just "filtering", the
-    verification pass — skipped entirely when verify is "off"), so a caller
-    can surface it as its own job status instead of it running silently inside
-    "mapping". `verify` picks this run's verification mode — "off" | "demote"
-    | "drop"; `verdict` picks the verdict architecture — "menu" |
-    "independent"; `report_type` picks the prompt family — "incident" |
-    "pentest"; `top_k` overrides how many retrieval candidates each chunk is
-    judged against (None = settings defaults for all four — the eval harness
-    passes top_k explicitly so its --top-k applies to the verdict half, not
-    only to coverage scoring)."""
+    """Map one indexed report: hybrid candidates per chunk, LLM verdicts,
+    validated and flattened into ChunkMappings.
+
+    `verify`, `verdict`, `report_type` and `top_k` override the corresponding
+    settings for this run only; None keeps the configured default.
+    `on_phase` fires when a named post-verdict phase starts, so a caller can
+    surface it as its own job status."""
     verify_run = settings.verify_mode if verify is None else verify
     if verify_run not in VERIFY_MODES:
         raise ValueError(f"verify must be one of {VERIFY_MODES}, got {verify_run!r}")
@@ -563,16 +597,7 @@ def map_report(
     report_type_run = settings.report_type if report_type is None else report_type
     if report_type_run not in REPORT_TYPES:
         raise ValueError(f"report_type must be one of {REPORT_TYPES}, got {report_type_run!r}")
-    # One prompt family per run: the pentest variants recast the actor-centric
-    # rule (the testers play the adversary; un-exploited findings aren't
-    # evidence) — everything downstream of the prompts is identical.
-    pentest = report_type_run == "pentest"
-    menu_system = PENTEST_SYSTEM_PROMPT if pentest else SYSTEM_PROMPT
-    independent_system = (
-        PENTEST_INDEPENDENT_SYSTEM_PROMPT if pentest else INDEPENDENT_SYSTEM_PROMPT
-    )
-    verify_system = PENTEST_VERIFY_SYSTEM_PROMPT if pentest else VERIFY_SYSTEM_PROMPT
-    verify_actor = "the testers" if pentest else "the attacker"
+    prompts = _prompts_for(report_type_run)
     top_k_run = settings.map_candidates if top_k is None else top_k
     candidates_by_chunk = search_techniques_for_report(report_id, top_k_per_chunk=top_k_run)
     if not candidates_by_chunk:
@@ -619,7 +644,7 @@ def map_report(
             _chunk_prompt(chunk_text[chunk_id], candidates, descriptions),
             _response_schema(list(by_id)),
             client=client,
-            system=menu_system,
+            system=prompts.menu,
         )
         accepted: list[ChunkMapping] = []
         for m in result.get("mappings", []):
@@ -633,8 +658,8 @@ def map_report(
 
     def map_one_independent(chunk_id: str, client: httpx.Client) -> list[ChunkMapping]:
         # One small call per candidate, issued sequentially from this thread so
-        # the chunk-first prompt keeps one Ollama slot's prefix cache warm
-        # (parallelism stays at the chunk level, as in menu mode). No enum
+        # the chunk-first prompt keeps one Ollama slot's prefix cache warm;
+        # parallelism stays at the chunk level, as in menu mode. No enum
         # constraint is needed — the candidate IS the technique id.
         accepted: list[ChunkMapping] = []
         for candidate in candidates_by_chunk[chunk_id]:
@@ -646,7 +671,7 @@ def map_report(
                 ),
                 _INDEPENDENT_SCHEMA,
                 client=client,
-                system=independent_system,
+                system=prompts.independent,
             )
             if not result.get("applies"):
                 continue
@@ -664,14 +689,10 @@ def map_report(
             return map_one_independent(chunk_id, client)
         return map_one_menu(chunk_id, client)
 
-    # Chunks resolve concurrently (map_workers must not exceed the ollama
-    # service's OLLAMA_NUM_PARALLEL or requests just queue server-side).
-    # Submission order is strongest-retrieval-first: the chunks most likely to
-    # carry real findings get their verdicts early, so the live matrix shows
-    # the substance of the report within the first few chunks — on CPU, where
-    # a full run takes minutes, a user can Cancel once satisfied. Progress
-    # snapshots and the final result are re-assembled in *report* order so the
-    # matrix and evidence still read naturally against the document.
+    # Chunks are submitted strongest-retrieval-first, so the live matrix shows
+    # the report's substance within the first few verdicts and a user on CPU
+    # can cancel once satisfied. Progress snapshots and the final result are
+    # re-assembled in report order, so the evidence reads against the document.
     ordered = sorted(candidates_by_chunk, key=lambda cid: chunk_meta[cid]["order"])
     by_signal = sorted(
         candidates_by_chunk,
@@ -698,45 +719,19 @@ def map_report(
                         on_progress(len(by_chunk), total, snapshot)
             except BaseException:
                 # A failed chunk fails the run: don't let queued chunks grind
-                # on (each can block for the full LLM timeout) before the
+                # on — each can block for the full LLM timeout — before the
                 # error reaches the job.
                 pool.shutdown(wait=False, cancel_futures=True)
                 raise
 
         result = [m for cid in ordered for m in by_chunk.get(cid, [])]
 
-        # Verification runs as its own phase AFTER every verdict has landed,
-        # not interleaved per chunk, for two measured reasons: (a) verify
-        # calls landing mid-verdict-stage evict the verdict prompt's cached
-        # prefix from Ollama's slots (all slots are verdict-warm while the
-        # pool is busy — the server routes by best prefix match, but only
-        # among free capacity), and (b) interleaving changes decode batch
-        # composition, which measurably perturbs the verdicts themselves
-        # (the nondeterminism mechanism; solid techniques flipped 8/8→0/8
-        # when extra calls ran alongside the verdict stage).
         if verify_run != "off" and result:
             if should_abort and should_abort():
                 raise MappingAborted()
             if on_phase:
                 on_phase("filtering")
-
-            def verify_one(m: ChunkMapping) -> ChunkMapping | None:
-                if _verify_mapping(
-                    m,
-                    descriptions.get(m.technique_id, ""),
-                    chunk_text[m.chunk_id],
-                    client,
-                    system=verify_system,
-                    actor=verify_actor,
-                ):
-                    return m
-                if verify_run == "demote":
-                    m.confidence = min(m.confidence, DEMOTED_CONFIDENCE)
-                    m.flagged = True
-                    return m
-                return None
-
-            with ThreadPoolExecutor(max_workers=resolve_map_workers()) as verify_pool:
-                verified = list(verify_pool.map(verify_one, result))
-            result = [m for m in verified if m is not None]
+            result = _run_verification(
+                result, verify_run, descriptions, chunk_text, client, prompts
+            )
     return result

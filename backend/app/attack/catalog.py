@@ -8,12 +8,11 @@ from app.core.config import settings
 
 
 def load_tactics(stix_path: str) -> list[tuple[str, str]]:
-    """Return (shortname, display name) tactics in official matrix column order.
+    """(shortname, display name) tactics in official matrix column order.
 
-    Derived from the bundle's x-mitre-matrix.tactic_refs rather than hardcoded:
-    the tactic set isn't as stable as it looks (this bundle already splits the
-    former "Defense Evasion" into "Defense Impairment" and "Stealth").
-    """
+    Read from the bundle's x-mitre-matrix.tactic_refs rather than hardcoded:
+    the tactic set is not as stable as it looks — this bundle already splits
+    the former "Defense Evasion" into "Defense Impairment" and "Stealth"."""
     with open(stix_path) as f:
         bundle = json.load(f)
 
@@ -32,9 +31,8 @@ def _technique_summary(tech: Technique) -> dict:
 
 def build_catalog(techniques: list[Technique], tactics_order: list[tuple[str, str]]) -> dict:
     """Group the flat technique list into the tactic x technique x sub-technique
-    tree a Navigator-style matrix renders. A technique can appear under multiple
-    tactic columns, matching real ATT&CK Navigator behavior.
-    """
+    tree the matrix renders. A technique may appear under several tactic
+    columns, as in the real ATT&CK Navigator."""
     children_by_parent: dict[str, list[Technique]] = {}
     for tech in techniques:
         if tech.is_subtechnique:

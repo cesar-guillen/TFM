@@ -24,6 +24,7 @@ import os
 import uuid
 
 from app.core.config import settings
+from app.eval.deleak import deleak_markdown
 from app.eval.ground_truth import DEFAULT_REPORT, REPORTS
 from app.eval.harness import run_eval
 from app.ingest.indexing import index_report
@@ -35,9 +36,16 @@ def _find_pdf(pdf_glob: str) -> str | None:
     return hits[0] if hits else None
 
 
-def _ingest(pdf_path: str) -> tuple[str, int]:
+def _ingest(pdf_path: str, deleak: bool = False) -> tuple[str, int]:
     report_id = str(uuid.uuid4())
     markdown = pdf_to_markdown(pdf_path)
+    if deleak:
+        markdown, stats = deleak_markdown(markdown)
+        # Always report it: a silent de-leak would be worse than none, since
+        # the numbers it changes are the ones being reported.
+        print(f"  de-leaked: dropped {stats['sections_removed'] or 'no'} section(s)"
+              f" ({stats['section_lines_removed']} lines),"
+              f" {stats['inline_ids_removed']} inline ATT&CK id(s)")
     chunks, _skipped = index_report(report_id, os.path.basename(pdf_path), markdown)
     return report_id, len(chunks)
 
@@ -102,7 +110,7 @@ def main() -> None:
         if not pdf or not os.path.exists(pdf):
             raise SystemExit(f"No PDF found (looked for {gt.pdf_glob}); pass --pdf")
         print(f"Ingesting {os.path.basename(pdf)} …")
-        report_id, chunk_count = _ingest(pdf)
+        report_id, chunk_count = _ingest(pdf, deleak=gt.deleak)
         print(f"  indexed {chunk_count} content chunks (report_id {report_id})")
 
     print(

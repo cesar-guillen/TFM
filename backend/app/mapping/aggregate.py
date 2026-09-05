@@ -1,10 +1,9 @@
-"""Aggregation (pipeline stage 7): dedupe per-chunk mappings into one Navigator
-layer. A technique mapped by several chunks keeps its *highest* confidence as
-the score (evidence strength, not evidence volume — three weak mentions don't
-make a strong one) and every chunk's evidence line in the comment, so the
-matrix cell itself carries the full traceability chain. The score is the
-model's own 0-100 confidence (see mapper.ChunkMapping); 0 is reserved for
-"not mapped"."""
+"""Aggregation: collapse per-chunk mappings into one Navigator layer.
+
+A technique mapped by several chunks keeps its *highest* confidence as the cell
+score (evidence strength, not volume) and every distinct piece of evidence in
+the cell comment, so the matrix carries the full traceability chain.
+"""
 
 import re
 from collections import defaultdict
@@ -13,77 +12,62 @@ from app.mapping.mapper import ChunkMapping
 
 _QUOTE_TOKENS = re.compile(r"[a-z0-9]+")
 
-# A parent technique that wasn't mapped itself but has mapped sub-techniques
-# gets a synthetic entry (the matrix collapses sub-techniques by default, so
-# without highlighting the parent the user could miss the flagged subs
-# entirely) scored as the *average* of its subs' scores — the parent reflects
-# the family's overall evidence strength, and can never outrank its own best
-# sub (relevant in demote mode, where flagged subs are capped low).
-
 
 def _norm_quote(evidence: str) -> str:
-    """Alphanumeric-token key for collapsing the same quote captured by
-    overlapping chunks. Punctuation and case are dropped, not just whitespace:
-    a chunk boundary often includes/excludes a trailing period or capital, so
-    "…svc-sql account" and "…svc-sql account." are the same evidence and must
-    dedup to one line."""
+    """Alphanumeric-token key for collapsing the same quote as captured by
+    overlapping chunks — a chunk boundary often adds or drops a trailing
+    period, so punctuation and case must be ignored, not just whitespace."""
     return " ".join(_QUOTE_TOKENS.findall(evidence.lower()))
 
 
 def _evidence_line(m: ChunkMapping) -> str:
-    """Justification first ("why flagged"), then the verbatim quote that
-    grounds it (see mapper._evidence_in_chunk). The score is carried by the
-    cell, not repeated here."""
+    """Justification first, then the verbatim quote grounding it. The score is
+    carried by the cell, not repeated here."""
     return f'{m.reason} — "{m.evidence}"' if m.reason else f'"{m.evidence}"'
 
 
+def _comment(hits: list[ChunkMapping]) -> str:
+    """One line per distinct piece of evidence, strongest first — so the top
+    line always justifies the cell's score."""
+    lines = []
+    seen: set[str] = set()
+    for hit in sorted(hits, key=lambda h: -h.confidence):
+        key = _norm_quote(hit.evidence)
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(_evidence_line(hit))
+    return "\n".join(lines)
+
+
 def aggregate_mappings(mappings: list[ChunkMapping], attack_version: str = "19") -> dict:
-    """Collapse chunk-level mappings into a Navigator layer-JSON dict (the same
-    shape the frontend's import/export and /api/matrix use)."""
+    """Collapse chunk-level mappings into a Navigator layer-JSON dict — the
+    same shape the frontend's import/export and GET /api/matrix use."""
     by_technique: dict[str, list[ChunkMapping]] = defaultdict(list)
     for m in mappings:
         by_technique[m.technique_id].append(m)
 
     techniques = []
     for technique_id, hits in sorted(by_technique.items()):
-        best = max(h.confidence for h in hits)
-        # Strongest evidence first, so the top comment line is always the one
-        # that justifies the cell's score (in report order a technique mapped
-        # by a strong chunk could otherwise lead with a weaker/misattributed
-        # instance — "right technique, wrong comment"). Deduped by evidence
-        # quote, not full line: overlapping chunks capture the same sentence
-        # with slightly different reasons, which stacked as near-duplicate
-        # lines. One clean line per distinct quote, no score-tag prefix (the
-        # cell already shows the score). Stable sort keeps report order within
-        # equal confidences.
-        deduped: list[ChunkMapping] = []
-        seen: set[str] = set()
-        for h in sorted(hits, key=lambda h: -h.confidence):
-            key = _norm_quote(h.evidence)
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(h)
-        comment = "\n".join(_evidence_line(h) for h in deduped)
         entry = {
             "techniqueID": technique_id,
-            "score": best,
-            "comment": comment,
+            "score": max(h.confidence for h in hits),
+            "comment": _comment(hits),
             "enabled": True,
         }
-        # Surfaced via standard Navigator per-technique metadata (rather than a
-        # text marker in the comment) so the frontend can render it as a
-        # yellow-outlined cell instead of prose the user has to read past —
-        # and it round-trips through save/export like any other layer field.
-        # Flagged if *any* supporting instance was demoted by the verification
-        # pass, even when a stronger, non-flagged instance elsewhere set the
-        # cell's score — the reviewer still benefits from knowing one piece of
-        # evidence for this technique didn't hold up.
+        # Carried as standard Navigator metadata rather than a marker in the
+        # comment, so it round-trips through save/export and the frontend can
+        # render it as an outlined cell. Set when *any* supporting instance was
+        # demoted, even if a stronger one set the score.
         if any(h.flagged for h in hits):
             entry["metadata"] = [{"name": "flagged", "value": "true"}]
         techniques.append(entry)
 
-    # Promote parents of mapped sub-techniques that weren't mapped themselves.
+    # Promote parents of mapped sub-techniques that weren't mapped themselves:
+    # the matrix collapses sub-techniques by default, so an unhighlighted
+    # parent would hide them entirely. The parent scores as the average of its
+    # subs, so it reflects the family's evidence and never outranks its best
+    # sub (which matters in demote mode, where flagged subs are capped low).
     mapped = set(by_technique)
     for parent_id in sorted({tid.split(".")[0] for tid in mapped if "." in tid} - mapped):
         subs = sorted(tid for tid in mapped if tid.startswith(parent_id + "."))

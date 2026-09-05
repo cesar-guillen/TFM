@@ -1,22 +1,17 @@
-"""PDF → Markdown extraction with ligature-damage mitigation.
+"""PDF -> Markdown extraction, with ligature-damage repair.
 
-Ligature glyphs (ﬁ ﬀ ﬂ ﬃ ﬄ) in real-world PDFs break extraction two ways:
+Ligature glyphs (fi, ff, fl...) in real-world PDFs break extraction two ways:
 
-1. pymupdf4llm's default engine (pymupdf.layout) silently drops every text
-   line containing an expanded ligature: MuPDF gives the synthesized
-   constituent characters degenerate zero-width, metrics-height bboxes, the
-   inflated span then fails the engine's 80%-inside-clip test
-   (utils.almost_in_bbox) and the whole span is discarded. Once triggered,
-   process-global state corrupts every LATER conversion in the same process
-   too. The legacy engine ships with TEXT_ACCURATE_BBOXES disabled and has
-   neither defect, so we pin it below.
-
-2. Fonts with a broken ToUnicode map extract each ligature glyph as a bogus
-   codepoint that ends up as U+FFFD (�) in the markdown, corrupting exactly
-   the words retrieval needs ("exﬁltration", "oﬃce", "identiﬁed"...).
-   repair_ligatures() rewrites those words by trying the ligature expansions
-   against vocabulary from the document itself plus the bundled ATT&CK KB
-   descriptions — fully offline, no new dependencies.
+1. pymupdf4llm's default engine silently drops whole text lines containing an
+   expanded ligature, and corrupts process-global state so every later
+   conversion in the same process loses content too. The legacy engine has
+   neither defect, so it is pinned below.
+2. Fonts with a broken ToUnicode map extract each ligature as a bogus
+   codepoint that lands in the markdown as U+FFFD, corrupting exactly the
+   words retrieval needs ("exfiltration", "identified"). repair_ligatures()
+   rewrites those words by testing the ligature expansions against vocabulary
+   from the document itself plus the bundled ATT&CK descriptions — offline,
+   with no extra dependency.
 """
 
 import itertools
@@ -25,12 +20,15 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+import pymupdf
 import pymupdf4llm
+
+from app.ingest.ocr import format_ocr_block, ocr_document_images
 
 pymupdf4llm.use_layout(False)
 
-# U+FB00..FB06 → ASCII, for PDFs whose ToUnicode correctly yields the
-# Unicode ligature codepoints (they would break BM25/embedding matching).
+# U+FB00..FB06 -> ASCII: intact ligature codepoints break BM25 and embedding
+# matching just as badly as the broken ones.
 _LIGATURE_TABLE = str.maketrans(
     {
         "ﬀ": "ff",
@@ -55,8 +53,8 @@ _KB_SEED = (
 )
 
 
-# Crude inflection stripping so "conﬁrming" can match vocab "confirm" and
-# "ﬁll" can match vocab "filled" — applied to both sides, stems kept ≥ 4 chars.
+# Crude inflection stripping, applied to both sides so "confirming" matches a
+# vocabulary entry of "confirm". Stems stay at least 4 chars.
 _SUFFIXES = ("ing", "ed", "es", "ly", "s", "d")
 
 
@@ -103,5 +101,46 @@ def repair_ligatures(markdown: str) -> str:
     )
 
 
-def pdf_to_markdown(pdf_path: str) -> str:
-    return repair_ligatures(pymupdf4llm.to_markdown(pdf_path))
+class PdfParseError(Exception):
+    """The upload could not be read as a PDF (corrupt, encrypted, or not one)."""
+
+
+def pdf_to_markdown(pdf_path: str, ocr_enabled: bool = True) -> str:
+    """`ocr_enabled=False` skips OCR entirely (a per-run user choice — see the
+    upload options dialog), independent of whether tesseract is installed."""
+    try:
+        raw = pymupdf.open(pdf_path)
+        # Garbage-collect + clean before handing the PDF to pymupdf4llm.
+        # Fixes a measured 19-31x parse-time blowup (2026-09-05) on reports
+        # whose export tool references every embedded image from every
+        # page's resource dictionary (a PDF-export artifact, not real
+        # content duplication) — pymupdf4llm's layout detector decodes and
+        # MD5-hashes an image once per *reference*, so a 62-image, 41-page
+        # report bloats to ~2,500 decodes instead of 62. Cleaning collapses
+        # the redundant references before that ever happens. In-memory, no
+        # temp file. Verified byte-identical markdown output and functionally
+        # identical image metadata (only sub-pixel bbox float noise, ~1e-5pt,
+        # irrelevant at any real render DPI) on all 3 affected reports; cost
+        # on an already-fast report was 0.05s and still net faster overall.
+        cleaned_bytes = raw.tobytes(garbage=4, deflate=True, clean=True)
+        raw.close()
+        doc = pymupdf.open(stream=cleaned_bytes, filetype="pdf")
+        pages = pymupdf4llm.to_markdown(doc, page_chunks=True)
+    except Exception as exc:
+        raise PdfParseError(str(exc)) from exc
+
+    # OCR embedded screenshots (console output, dashboards) that the text
+    # layer can't see (app/ingest/ocr.py) — page_chunks=True's own per-page
+    # `text` fields concatenate to byte-identical output to the plain-string
+    # call (verified 2026-09-04), so this only adds content, never changes
+    # existing extraction. Degrades to a no-op if tesseract isn't installed.
+    ocr_by_page = ocr_document_images(doc, pages) if ocr_enabled else {}
+    parts = []
+    for i, page in enumerate(pages):
+        text = page["text"]
+        for idx, ocr_text in enumerate(ocr_by_page.get(i, []), start=1):
+            text += format_ocr_block(idx, ocr_text)
+        parts.append(text)
+    doc.close()
+
+    return repair_ligatures("".join(parts))

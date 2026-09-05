@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { IngestStatus, IngestStatusValue, MappingStatus, WarmupStatus } from "../api/client";
+import { isTerminal, type IngestStatus, type IngestStatusValue, type MappingStatus, type WarmupStatus } from "../api/client";
 import { useWarmup } from "../hooks/useWarmup";
 import { formatDuration } from "../utils/format";
 
@@ -87,7 +87,7 @@ function MappingSection({
       <div className="mapping-section">
         <span className="badge badge-danger">Failed</span>
         <p className="mapping-section__hint">{mappingJob.error}</p>
-        <button className="btn" onClick={onGenerate}>
+        <button className="btn" onClick={onGenerate} disabled={generateDisabled}>
           Retry
         </button>
       </div>
@@ -175,17 +175,11 @@ export default function ProgressPanel({
   const bodyRef = useRef<HTMLDivElement>(null);
 
   // Poll the LLM warm-up state while the pipeline is running: it drives the
-  // wording of the mapping job's "warming" phase, and lets the user know
-  // during ingest that the model is already loading in the background.
-  const ingestActive = job !== null && job.status !== "error" && job.status !== "cancelled";
-  const pipelineRunning =
-    ingestActive &&
-    (mappingJob === null ||
-      (mappingJob.status !== "done" && mappingJob.status !== "error" && mappingJob.status !== "cancelled"));
+  // wording of the mapping job's "warming" phase, and tells the user during
+  // ingest that the model is already loading in the background.
+  const ingestAlive = job !== null && job.status !== "error" && job.status !== "cancelled";
+  const pipelineRunning = ingestAlive && (mappingJob === null || !isTerminal(mappingJob.status));
   const warmup = useWarmup(pipelineRunning);
-  // Cancellable while any stage is still working; pipelineRunning flips false
-  // once the mapping job reaches a terminal state.
-  const cancellable = pipelineRunning && !(job?.status === "done" && mappingJob?.status === "done");
 
   // Keep the step the pipeline is currently on in view: whenever ingest or
   // mapping advances, scroll the active element into the panel's viewport
@@ -282,7 +276,7 @@ export default function ProgressPanel({
           />
         </div>
       )}
-      {onCancel && cancellable && (
+      {onCancel && pipelineRunning && (
         <button
           className="btn btn-danger progress-cancel"
           onClick={onCancel}

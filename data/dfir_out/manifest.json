@@ -1,0 +1,132 @@
+{
+  "config": {
+    "verdict_mode": "menu",
+    "verify_mode": "demote",
+    "report_type": "incident",
+    "top_k": 8,
+    "model": "llama3.1:8b",
+    "embed_model": "nomic-embed-text"
+  },
+  "reports": {
+    "dfir-2025-02-24-confluence-exploit-leads-to-lockbit-ransomware": {
+      "pdf": "dfir-2025-02-24-confluence-exploit-leads-to-lockbit-ransomware.pdf",
+      "markdown_chars": 29972,
+      "report_id": "5af30615-0924-4c16-a96f-1fc77fa3d88f",
+      "chunks": 40,
+      "chunks_filtered": 0,
+      "ingest_seconds": 39.1,
+      "techniques": 61,
+      "mappings": 84,
+      "flagged": 14,
+      "map_seconds": 160.1
+    },
+    "dfir-2025-03-31-fake-zoom-ends-in-blacksuit-ransomware": {
+      "pdf": "dfir-2025-03-31-fake-zoom-ends-in-blacksuit-ransomware.pdf",
+      "markdown_chars": 32626,
+      "report_id": "731dd5d1-e710-47c7-a4dd-b7d084e0363a",
+      "chunks": 45,
+      "chunks_filtered": 0,
+      "ingest_seconds": 16.9,
+      "techniques": 70,
+      "mappings": 69,
+      "flagged": 13,
+      "map_seconds": 136.6
+    },
+    "dfir-2025-05-19-another-confluence-bites-the-dust-falling-to-elpaco-team-ransomware": {
+      "pdf": "dfir-2025-05-19-another-confluence-bites-the-dust-falling-to-elpaco-team-ransomware.pdf",
+      "markdown_chars": 58614,
+      "report_id": "307e6c2b-0c68-49d3-a719-700070ba8c31",
+      "chunks": 72,
+      "chunks_filtered": 0,
+      "ingest_seconds": 65.3,
+      "techniques": 90,
+      "mappings": 128,
+      "flagged": 25,
+      "map_seconds": 235.3
+    },
+    "dfir-2025-06-30-hide-your-rdp-password-spray-leads-to-ransomhub-deployment": {
+      "pdf": "dfir-2025-06-30-hide-your-rdp-password-spray-leads-to-ransomhub-deployment.pdf",
+      "markdown_chars": 33118,
+      "report_id": "e4b7bec4-92bd-4b8e-9acd-ff92138f6793",
+      "chunks": 46,
+      "chunks_filtered": 0,
+      "ingest_seconds": 12.9,
+      "techniques": 54,
+      "mappings": 84,
+      "flagged": 17,
+      "map_seconds": 164.7
+    },
+    "dfir-2025-09-08-blurring-the-lines-intrusion-shows-connection-with-three-major-ransomw": {
+      "pdf": "dfir-2025-09-08-blurring-the-lines-intrusion-shows-connection-with-three-major-ransomw.pdf",
+      "markdown_chars": 48355,
+      "report_id": "7aa246b7-ea1b-4517-bc5f-02f9db40f685",
+      "chunks": 61,
+      "chunks_filtered": 0,
+      "ingest_seconds": 112.3,
+      "techniques": 94,
+      "mappings": 109,
+      "flagged": 19,
+      "map_seconds": 202.6
+    },
+    "dfir-2025-09-29-from-a-single-click-how-lunar-spider-enabled-a-near-two-month-intrusio": {
+      "pdf": "dfir-2025-09-29-from-a-single-click-how-lunar-spider-enabled-a-near-two-month-intrusio.pdf",
+      "markdown_chars": 57908,
+      "report_id": "b7362f43-1847-4a25-bc3d-69b050cebbe8",
+      "chunks": 74,
+      "chunks_filtered": 0,
+      "ingest_seconds": 18.5,
+      "techniques": 102,
+      "mappings": 143,
+      "flagged": 26,
+      "map_seconds": 251.0
+    },
+    "dfir-2025-12-17-cats-got-your-files-lynx-ransomware": {
+      "pdf": "dfir-2025-12-17-cats-got-your-files-lynx-ransomware.pdf",
+      "markdown_chars": 34562,
+      "report_id": "77ff57c4-af42-4ed5-a0d3-5540a0e85f1a",
+      "chunks": 48,
+      "chunks_filtered": 0,
+      "ingest_seconds": 9.2,
+      "techniques": 60,
+      "mappings": 112,
+      "flagged": 30,
+      "map_seconds": 188.0
+    },
+    "dfir-2026-02-23-apache-activemq-exploit-leads-to-lockbit-ransomware": {
+      "pdf": "dfir-2026-02-23-apache-activemq-exploit-leads-to-lockbit-ransomware.pdf",
+      "markdown_chars": 25411,
+      "report_id": "16b2f50b-bfa8-4551-a576-8e79d4af56bb",
+      "chunks": 38,
+      "chunks_filtered": 0,
+      "ingest_seconds": 6.1,
+      "techniques": 46,
+      "mappings": 75,
+      "flagged": 13,
+      "map_seconds": 117.2
+    },
+    "dfir-2026-06-29-from-bing-search-to-ransomware-bumblebee-and-adaptixc2-deliver-akira": {
+      "pdf": "dfir-2026-06-29-from-bing-search-to-ransomware-bumblebee-and-adaptixc2-deliver-akira.pdf",
+      "markdown_chars": 59526,
+      "report_id": "fc1e9386-9482-41e9-ac47-655fdef20c0d",
+      "chunks": 77,
+      "chunks_filtered": 0,
+      "ingest_seconds": 20.9,
+      "techniques": 99,
+      "mappings": 150,
+      "flagged": 29,
+      "map_seconds": 267.1
+    },
+    "dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation": {
+      "pdf": "dfir-2026-08-24-bengalseo-part-1-anatomy-of-the-operation.pdf",
+      "markdown_chars": 32838,
+      "report_id": "0a562e52-5ec3-4b5e-813e-976495aceee7",
+      "chunks": 40,
+      "chunks_filtered": 0,
+      "ingest_seconds": 46.7,
+      "techniques": 38,
+      "mappings": 53,
+      "flagged": 14,
+      "map_seconds": 110.7
+    }
+  }
+}

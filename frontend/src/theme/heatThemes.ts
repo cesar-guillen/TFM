@@ -1,4 +1,5 @@
 import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
+import { readStored, writeStored } from "../utils/storage";
 
 export type RGB = [number, number, number];
 
@@ -69,10 +70,10 @@ const HeatThemeContext = createContext<HeatThemeContextValue>({
 });
 
 export function HeatThemeProvider({ children }: { children: ReactNode }) {
-  const [id, setId] = useState<string>(() => localStorage.getItem(STORAGE_KEY) ?? DEFAULT_THEME.id);
+  const [id, setId] = useState<string>(() => readStored(STORAGE_KEY) ?? DEFAULT_THEME.id);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, id);
+    writeStored(STORAGE_KEY, id);
   }, [id]);
 
   const value: HeatThemeContextValue = { theme: themeById(id), setThemeId: setId };

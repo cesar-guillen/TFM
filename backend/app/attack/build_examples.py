@@ -1,26 +1,22 @@
-"""Build the ATT&CK procedure-examples collection (see EXAMPLE_RETRIEVAL).
+"""Build the ATT&CK procedure-examples collection (see settings.example_retrieval).
 
 MITRE's STIX bundle carries thousands of "uses" relationships whose
-descriptions are procedure examples written exactly like incident-report prose
-("Babuk can stop specific services related to backups") — the vocabulary
-report chunks actually use, which technique descriptions often lack (the
-measured cause of several systematically-unretrievable techniques, e.g. T1489
-Service Stop against "backup-related and database services were forcibly
-stopped").
+descriptions are procedure examples written like incident-report prose ("Babuk
+can stop specific services related to backups") — the vocabulary report chunks
+actually use, and which technique descriptions often lack.
 
-Each example is embedded as its OWN vector carrying its technique's full
-metadata. Do not concatenate examples into the technique documents instead:
-that variant was measured to dilute the technique embeddings toward a generic
-"threat actor did things" centroid and regressed coverage (Meridian Health
-core reachable 18/24 → 14/24).
+Each example is embedded as its OWN vector carrying its technique's metadata.
+Do not concatenate examples into the technique documents instead: that variant
+was measured to dilute the technique embeddings and regress coverage.
 
     docker compose exec backend python -m app.attack.build_examples
 
-Requires the STIX bundle (downloaded/cached like build_kb --refresh) and the
-Ollama embed model. Safe to re-run: the collection is rebuilt from scratch.
+Requires the STIX bundle and the Ollama embed model. Safe to re-run: the
+collection is rebuilt from scratch.
 """
 
 import json
+import os
 import re
 from collections import defaultdict
 
@@ -34,12 +30,10 @@ from app.core.chroma import (
     get_chroma_client,
 )
 from app.core.config import settings
-import os
 
-# Per technique: shortest examples first (terse ones carry the canonical
-# phrasing — "X used scheduled tasks to maintain persistence" — while long
-# ones are actor-specific stories), capped so hub techniques with hundreds of
-# examples (T1105 has 515) don't dominate the collection.
+# Shortest examples first — terse ones carry the canonical phrasing while long
+# ones are actor-specific stories — and capped, so hub techniques with hundreds
+# of examples don't dominate the collection.
 MAX_EXAMPLES_PER_TECHNIQUE = 12
 MIN_EXAMPLE_CHARS = 25
 

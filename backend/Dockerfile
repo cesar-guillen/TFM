@@ -6,6 +6,15 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# tesseract-ocr: OCR for embedded screenshots (app/ingest/ocr.py) — the text
+# layer can't see console output, dashboards, or sandbox logs shown only as
+# images (see CLAUDE.md's Known limitations). Build stages run with full
+# privileges regardless of the runtime cap_drop in docker-compose.yml, so a
+# plain install here needs none of that container's privilege-drop workarounds.
+RUN apt-get update -qq \
+    && apt-get install -y -qq --no-install-recommends tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

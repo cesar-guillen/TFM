@@ -7,56 +7,60 @@ BLOCK_RE = re.compile(r"[^\n].*?(?=\n\n+|\Z)", re.S)
 TARGET_CHARS = 1200  # soft size a chunk is packed towards
 MAX_CHARS = 2400  # hard cap; only a single oversized block (no blank lines) exceeds this
 
-# pymupdf4llm wraps heading text in emphasis markers (`# **1. Intro**`); strip
-# them so breadcrumbs, metadata, and classification see the plain title.
+# pymupdf4llm wraps heading text in emphasis markers (`# **1. Intro**`).
 EMPHASIS_RE = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1")
 
-# "5.1.2 Title"-style numbering. pymupdf4llm flattens most PDF headings to a
-# single `#` level, losing the hierarchy; the numeric prefix recovers it.
+# "5.1.2 Title" numbering, from which heading depth is recovered: the PDF's
+# own heading levels are unreliable.
 NUMBER_PREFIX_RE = re.compile(r"^(\d+(?:\.\d+)*)[.)]?\s+")
 
-# Some PDFs' sub-headings come out of pymupdf4llm as **bold body text** rather
-# than markdown headings, so HEADING_RE (which needs a literal `#`) never sees
-# them: the whole parent section is then packed by size alone and one chunk
-# straddles several unrelated ATT&CK topics. A block that is exactly one bold
-# span on one line AND carries a numeric prefix is such a heading. The number
-# is doing double duty — it is the depth signal `effective_level` already
-# understands, and the discriminator that keeps bold *emphasis* out of the
-# hierarchy ("**1.4 TB** of corporate data…" is a wrapped prose line, bold
-# table header rows are multi-span, "**Report Reference:** MHP-…" is metadata).
+# Some PDFs render sub-headings as bold body text, which HEADING_RE cannot
+# see: the parent section is then packed by size alone and one chunk straddles
+# several unrelated topics. A block that is exactly one bold span on one line
+# AND carries a numeric prefix is such a heading. The numeric requirement is
+# what keeps bold *emphasis* out of the hierarchy ("**1.4 TB** of data…" is
+# prose, "**Report Reference:** …" is metadata, table headers are multi-span).
 BOLD_HEADING_RE = re.compile(r"^\*\*(?!\s)([^*\n]{1,120}?)\s*\*\*$")
 
 # Classification stamps rendered as headings (page banners, TLP markings).
 # They are not section structure: ignored for the heading stack entirely.
 BANNER_RE = re.compile(r"do not distribute|confidential|proprietary|tlp:\s*(clear|white|green|amber|red)", re.I)
 
-# Defender-guidance sections. These name techniques as things to prevent,
-# detect, or clean up — not as observed adversary activity — so mapping them
-# yields false positives. Matched against each heading with its numeric prefix
-# removed; a match anywhere in the heading path taints the whole subtree.
-# Bilingual: English + Spanish equivalents (stems chosen to stop before
-# accented characters where possible; [oó]-style classes cover the rest, since
-# OCR'd PDFs sometimes lose accents).
+# Defender-guidance sections: they name techniques as things to prevent or
+# clean up, not as observed adversary activity, so mapping them yields false
+# positives. Matched against each heading with its numeric prefix removed; a
+# match anywhere in the path taints the whole subtree. English + Spanish, with
+# [oó]-style classes because OCR sometimes drops accents. Bare
+# "detection"/"response" are deliberately absent — they head narrative
+# timelines.
 GUIDANCE_RE = re.compile(
     r"remediat|mitigat|recommend|countermeasure|containment|eradicat|\brecovery\b"
     r"|lessons learned|post-incident|action plan|action items|next steps"
     r"|best practice|hardening|how to protect|prevention|defensive measures"
     r"|protective measures|detection opportunit|hunting quer|sigma rule|yara rule"
-    # Response-phase communication/notification sections ("5.5 Communication":
-    # stakeholder notifications, breach disclosure — victim response actions,
-    # not adversary activity; observed mapping T1491.001 from a notification
-    # sentence). Bare "communication(s)"/"notification(s)" only as the whole
-    # heading so technical headings like "C2 Communications" stay content;
-    # the multi-word forms are specific enough to match anywhere.
+    # REJECTED 2026-09-03 (tried and reverted — see CLAUDE.md's "Detection-
+    # section boilerplate" note): classifying "Detections"/"Sigma"/"Diamond
+    # Model"/"Timeline Indicators" headings as guidance was tested on 3 real
+    # de-leaked DFIR Report intrusions, both verdict modes. It cut FPs
+    # meaningfully on 1 of 3 (rdp-ransomhub: unexpected/run 34.8->29.8 under
+    # menu) but cost real recall on another (confluence-lockbit: exact recall
+    # 71.4%->63.1% under menu, 71.4%->67.9% under independent) — below this
+    # project's own 2-of-3 bar for keeping a change. Root cause confirmed, not
+    # assumed: T1059.003 and T1003.001 flipped from solid hits to misses even
+    # though their evidence (mimikatz x12, lsass x2) survives untouched in the
+    # narrative — removing ~10 chunks of Sigma/Detections text reshuffled
+    # chunk boundaries for unrelated spans, the same composition-sensitivity
+    # mechanism cycles 5b/7/12 already measured. If revisited: try demoting
+    # these sections' evidence weight at the VERDICT stage instead of
+    # removing the chunks from indexing entirely, since the ingest-time
+    # removal is what perturbs unrelated chunk boundaries.
+    # Response-phase communication/notification sections (stakeholder
+    # notifications, breach disclosure). The bare forms match only as a whole
+    # heading, so "C2 Communications" stays content.
     r"|^communications?$|^notifications?$|communication plan|notification plan"
     r"|stakeholder communication|crisis communication|breach notification"
     r"|internal communication|external communication"
-    # Spanish: remediación/mitigación/recomendaciones, contramedidas,
-    # contención/erradicación/recuperación (IR response phases), lecciones
-    # aprendidas, post-incidente, plan de acción, próximos pasos, buenas/
-    # mejores prácticas, acciones/medidas correctivas, endurecimiento/
-    # bastionado (hardening), prevención/preventivas, medidas defensivas/de
-    # protección, cómo proteger, oportunidades de detección, reglas sigma/yara.
+    # Spanish equivalents of the rules above.
     r"|remediac|mitigac|recomendac|contramedida"
     r"|contenci[oó]n|erradicac|recuperaci[oó]n"
     r"|lecciones aprendidas|post-?incidente|plan de acci|pr[oó]ximos pasos"
@@ -64,10 +68,7 @@ GUIDANCE_RE = re.compile(
     r"|endurecimiento|bastionado|prevenci|preventiv|medidas defensivas"
     r"|medidas de protecci|c[oó]mo proteger|oportunidades de detecci"
     r"|reglas? sigma|reglas? yara"
-    # Spanish mirrors of the communication/notification rules above:
-    # comunicación/comunicaciones, notificación(es), plan de comunicación/
-    # notificación, comunicación interna/externa/de crisis, notificación de
-    # brecha — same whole-heading restriction for the bare forms.
+    # Spanish mirrors of the communication/notification rules.
     r"|^comunicaci[oó]n(es)?$|^notificaci[oó]n(es)?$"
     r"|plan de comunicaci|plan de notificaci"
     r"|comunicaci[oó]n (interna|externa|de crisis)|notificaci[oó]n de brecha",
@@ -79,11 +80,7 @@ BOILERPLATE_RE = re.compile(
     r"table of contents|^contents$|document control|references$|bibliography"
     r"|acknowledg|about us|disclaimer|legal notice|copyright|revision history"
     r"|version history|document history|glossary|distribution list"
-    # Spanish: índice (TOC — also "índice de figuras"), tabla de contenido(s),
-    # control del documento, referencias, bibliografía, agradecimientos,
-    # sobre nosotros/quiénes somos, aviso legal, descargo/exención de
-    # responsabilidad, derechos de autor, historial de versiones/revisiones/
-    # cambios, control de versiones, glosario, lista de distribución.
+    # Spanish equivalents.
     r"|[ií]ndice|tabla de contenidos?|control del? documento|referencias$"
     r"|bibliograf|agradecimient|sobre nosotros|qui[eé]nes somos"
     r"|aviso legal|descargo de responsabilidad|exenci[oó]n de responsabilidad"
@@ -121,25 +118,21 @@ def classify_heading_path(heading_path: list[str]) -> SectionRole:
     return "content"
 
 
-# A "Key: value" metadata line (report reference, prepared-by, date…) as found
-# on title pages. Emphasis markers are stripped before matching.
+# A "Key: value" metadata line, as found on title pages.
 KEY_VALUE_RE = re.compile(r"^[^:\n]{1,40}:\s*\S")
 
 
 def classify_untitled(body: str) -> SectionRole:
-    """Role of a chunk with no heading path — the pre-first-heading preamble
-    (title page, classification banners, report metadata). classify_heading_path
-    has nothing to classify there, and defaulting to `content` let banner text
-    reach the mapper: a real run mapped 8 techniques at confidence 0 off the
-    'SIMULATED / SYNTHETIC DATA' banner of a test report. Furniture lines are
-    banners, boilerplate keywords, key-value metadata, and short unpunctuated
-    title fragments; a majority of them marks the chunk boilerplate, while an
-    untitled prose introduction (long, sentence-punctuated lines) stays
-    content. Applied to the document's FIRST chunk only: some reports style
-    every heading as bold text markdown never recognizes, so their whole body
-    has empty heading paths — content-classifying all of it misfiled real
-    attack-narrative chunks (timeline bullets look like key-value metadata),
-    while the observed failure lives on the title page alone."""
+    """Role of a chunk with no heading path — the preamble before the first
+    heading (title page, banners, report metadata), which
+    classify_heading_path cannot see. Furniture lines are banners, boilerplate
+    keywords, key-value metadata and short unpunctuated fragments; a majority
+    of them marks the chunk boilerplate, while a prose introduction stays
+    content.
+
+    Applied to the FIRST chunk only: reports that style every heading as bold
+    text have empty heading paths throughout, and classifying all of that
+    misfiles real timeline chunks (timestamps look like metadata)."""
     lines = [line.strip() for line in body.splitlines() if line.strip()]
     if not lines:
         return "boilerplate"
@@ -191,10 +184,9 @@ def _split_blocks(markdown: str) -> list[tuple[str, int, int]]:
     return blocks
 
 
-# Positions a hard slice may cut at, best first: end of a line (table row /
-# list item stays whole), end of a sentence, any whitespace. A boundary only
-# counts if it keeps the piece at least half the target size — a slice forced
-# down to a stub would just multiply chunk count.
+# Where a hard slice may cut, best first: end of line (keeps a table row
+# whole), end of sentence, any whitespace. A boundary counts only if it leaves
+# the piece at least half the target size.
 _SLICE_BOUNDARY_RES = (re.compile(r"\n"), re.compile(r"[.!?][\"')]?\s"), re.compile(r"\s"))
 
 
@@ -263,49 +255,34 @@ def chunk_markdown(
                 return level + 1
         return md_level
 
-    def flush(role_override: SectionRole | None = None) -> None:
+    def emit(body: str, start: int, end: int, role: SectionRole | None = None) -> None:
         nonlocal order
-        if not buffer:
-            return
         path = heading_path()
-        body = "\n\n".join(b[0] for b in buffer)
         breadcrumb = " > ".join(path)
-        text = f"{breadcrumb}\n\n{body}" if breadcrumb else body
-        chunks.append(
-            Chunk(
-                text=text,
-                heading_path=path,
-                order=order,
-                start_char=buffer[0][1],
-                end_char=buffer[-1][2],
-                section_role=role_override
-                or (
-                    classify_heading_path(path)
-                    if path
-                    else (classify_untitled(body) if order == 0 else "content")
-                ),
+        if role is None:
+            # An untitled chunk can only be classified from its own text, and
+            # only the document's preamble is worth classifying that way.
+            role = (
+                classify_heading_path(path)
+                if path
+                else (classify_untitled(body) if order == 0 else "content")
             )
-        )
-        order += 1
-
-    def emit(text: str, start: int, end: int) -> None:
-        nonlocal order
-        path = heading_path()
-        breadcrumb = " > ".join(path)
-        full_text = f"{breadcrumb}\n\n{text}" if breadcrumb else text
         chunks.append(
             Chunk(
-                text=full_text,
+                text=f"{breadcrumb}\n\n{body}" if breadcrumb else body,
                 heading_path=path,
                 order=order,
                 start_char=start,
                 end_char=end,
-                section_role=classify_heading_path(path)
-                if path
-                else (classify_untitled(text) if order == 0 else "content"),
+                section_role=role,
             )
         )
         order += 1
+
+    def flush(role: SectionRole | None = None) -> None:
+        if not buffer:
+            return
+        emit("\n\n".join(b[0] for b in buffer), buffer[0][1], buffer[-1][2], role)
 
     for text, start, end in blocks:
         heading_match = HEADING_RE.match(text)
@@ -329,7 +306,7 @@ def chunk_markdown(
             # whatever section it landed in and let indexing drop it.
             flush()
             buffer = [(text, start, end)]
-            flush(role_override="boilerplate")
+            flush("boilerplate")
             buffer = []
             continue
 

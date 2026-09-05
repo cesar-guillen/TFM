@@ -1,19 +1,18 @@
-"""Mapping eval harness: score the pipeline against a hand-labelled report,
-separating the two failure surfaces and averaging over N runs to see through
-the ±2-3-technique run-to-run nondeterminism (concurrent GPU decodes at temp 0).
+"""Mapping eval harness: score the pipeline against a hand-labelled report.
 
-Two metrics, deliberately separate — they have different fixes:
-  * retrieval coverage (deterministic, one pass): of the CORE techniques, how
-    many are even offered as candidates. A technique never retrieved can never
-    be mapped — that's a retrieval problem, fixed upstream.
-  * verdict recall (N passes): of what IS offered, how often the LLM actually
-    maps it. Per-technique frequency (e.g. "/etc/shadow 2/10") is the point —
-    a single run can't tell a real miss from an unlucky draw.
+Mapping is nondeterministic even at temperature 0 (concurrent decodes vary the
+batch composition), so a single run proves nothing — everything here averages
+over N runs. The two failure surfaces are scored separately because they have
+different fixes:
 
-Plus an "unexpected" count (mapped techniques in neither core nor acceptable) —
-candidate false positives to review. See ground_truth.py for the label sets;
-the core/acceptable dicts are passed in, so the harness scores any labelled
-report in the registry.
+* retrieval coverage (deterministic, one pass): how many core techniques are
+  even offered as candidates. One never retrieved can never be mapped.
+* verdict recall (N passes): of what IS offered, how often the model maps it.
+  Per-technique frequency is the point — one run cannot tell a real miss from
+  an unlucky draw.
+
+Plus an "unexpected" count (mapped techniques in neither label set): candidate
+false positives for human review. See ground_truth.py for the label sets.
 """
 
 from dataclasses import dataclass, field
@@ -101,11 +100,10 @@ def mapped_ids_once(
     verdict: str | None = None,
     top_k: int | None = None,
 ) -> set[str]:
-    """One full mapping pass -> the set of technique ids in the aggregated
-    layer (what the user sees, so parent-promoted ids are included). `top_k`
-    must be passed explicitly: map_report otherwise reads
-    settings.map_candidates, which silently ignores the harness's --top-k
-    (the coverage half honored it, the verdict half didn't — fixed 2026-08-22)."""
+    """One full mapping pass -> the technique ids in the aggregated layer (what
+    the user sees, so parent-promoted ids are included). `top_k` must be passed
+    explicitly, or map_report falls back to settings.map_candidates and the
+    verdict half silently ignores the harness's --top-k."""
     layer = aggregate_mappings(
         map_report(
             report_id, verify=verify, report_type=report_type,

@@ -30,21 +30,25 @@ Not implemented yet: the chat interface (`/api/chat` is a stub) and a reranker o
 ```
 backend/
   app/
-    main.py            FastAPI app, CORS, router mounting, /health
-    core/config.py     Settings (env vars)
-    api/routes/         ingest.py (real), chat.py (stub), matrix.py (stub)
-    ingest/             pdf_to_markdown.py — pymupdf4llm wrapper
-    attack/             ATT&CK knowledge base builder (stix_source.py, techniques.py, embeddings.py, build_kb.py)
+    main.py              FastAPI app: CORS, routers, startup model warm-up + KB restore
+    api/routes/          ingest.py, mapping.py, matrix.py, attack.py, system.py, chat.py (stub)
+    core/                config.py (settings), llm.py (Ollama chat), chroma.py,
+                         jobs.py (shared background-job registry), warmup.py
+    ingest/              pdf_to_markdown.py, chunking.py, sentences.py, indexing.py, jobs.py
+    retrieval/           retrieve.py (hybrid + RRF), bm25.py, rerank.py (off by default)
+    attack/              ATT&CK KB: stix_source.py, techniques.py, catalog.py,
+                         embeddings.py, build_kb.py, build_examples.py, prebuilt_kb/
+    mapping/             mapper.py (LLM verdicts), aggregate.py, history.py, jobs.py
+    eval/                ground_truth.py, harness.py, run_eval.py
 frontend/
   src/
-    App.tsx             3-pane shell
-    components/         UploadPanel (real), MatrixView, ChatPanel (placeholders)
-    api/client.ts        fetch wrapper
-data/
-  uploads/              uploaded PDFs (gitignored)
-  chroma/                vector store persistence (gitignored)
-  attack/                cached ATT&CK STIX bundle (gitignored)
-docker-compose.yml
+    App.tsx              app shell + routes
+    pages/               DashboardPage (library + live run), MatrixPage (editor)
+    components/          AttackMatrix, MatrixWorkspace, UploadPanel, ProgressPanel, …
+    hooks/               useJobPolling, useWarmup, useAttackData
+    api/client.ts        typed fetch wrapper
+data/                    uploads/, layers/, chroma/, attack/ (all gitignored)
+docker-compose.yml       + .gpu / .cpu / .basic profile overlays
 .env.example
 ```
 
@@ -101,6 +105,19 @@ docker compose exec backend python -m app.attack.build_kb --refresh
 
 **Note on `OLLAMA_HOST`**: inside `docker-compose.yml` this is set to `http://ollama:11434` — `ollama` is the Compose service name, resolved by Docker's internal DNS to that container's private IP on the local Compose network. This is still entirely local (no traffic leaves the host); it's just how containers address each other instead of `localhost`, since each container has its own network namespace.
 
+### Uploads and limits
+
+Uploads must be PDFs and are capped at **64 MB**. The file is checked by its
+content (`%PDF-` header), not by the content type the browser declares, and the
+filename is sanitised before it is stored, so only `<uuid>_<safe name>.pdf` ever
+lands in `./data/uploads/`.
+
+The app itself has **no login**: it is meant to run on your own machine, bound to
+localhost. Do not publish those ports to a network without putting an
+authenticating reverse proxy in front — the `aws-ec2-deploy` branch has a Caddy
+configuration that does exactly that (HTTPS + HTTP Basic Auth). See the "Security
+posture" section of CLAUDE.md.
+
 ### Host prerequisites
 
 - Docker Engine + the Compose v2 plugin (`docker compose version` should work). On this machine that came from the `docker-compose-v2` apt package.
@@ -122,7 +139,15 @@ Plain `docker compose up` keeps working on CPU-only machines.
 
 ## Next steps
 
-Per the pipeline in CLAUDE.md, the next stage to build is chunking (stage 3) and hybrid retrieval (stage 4) against the report, now that the ATT&CK knowledge base (stage 5) is in place.
+The pipeline is complete end to end; what is left is listed in CLAUDE.md's
+"Current status". The largest unbuilt piece is the **chat interface** —
+`/api/chat` is a stub and there is no chat UI, although conversing with the LLM
+about the generated matrix is a stated goal of the project. Smaller open items:
+wiring the matrix search box to the backend's hybrid retrieval (it currently
+matches technique id and name only), PNG export alongside SVG, re-homing the
+extracted-markdown viewer, and the remaining thesis evaluation runs.
+
+## Appendix: installing Docker on a fresh Ubuntu host
 
 1. Base packages
 ```

@@ -1,0 +1,61 @@
+report,technique_id,technique_name,score,flagged,instances,sections,best_evidence
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1018,Remote System Discovery,100,0,2,Cat’s Got Your Files: Lynx Ransomware > Discovery | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,ping ​REDACTED
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1021.001,Remote Desktop Protocol,100,1,21,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Command and Control | Cat’s Got Your Files: Lynx Ransomware > Detections | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,moved laterally to it via RDP
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1021.002,SMB/Windows Admin Shares,100,0,3,Cat’s Got Your Files: Lynx Ransomware > Detections | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,External Remote SMB Logon
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1027,,100,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1027.015,Compression,100,0,2,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Collection,compressed the contents
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1049,System Network Connections Discovery,100,1,6,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,discovery commands
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1057,Process Discovery,100,1,3,Cat’s Got Your Files: Lynx Ransomware > Discovery | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,Systeminfo
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1071,,100,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1071.001,Web Protocols,100,0,1,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,netscan.exe
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1078,Valid Accounts,100,0,6,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Credential Access | Cat’s Got Your Files: Lynx Ransomware > Initial Access | Cat’s Got Your Files: Lynx Ransomware > Lateral Movement,valid credentials
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1078.001,Default Accounts,100,1,2,Cat’s Got Your Files: Lynx Ransomware > Lateral Movement | Cat’s Got Your Files: Lynx Ransomware > Persistence,Domain Admin credentials
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1098,,100,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1098.007,Additional Local or Domain Groups,100,1,5,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Detections | Cat’s Got Your Files: Lynx Ransomware > Privilege Escalation,added them to several high-privilege domain groups
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1105,Ingress Tool Transfer,100,1,5,Cat’s Got Your Files: Lynx Ransomware | Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Computed | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,downloaded NetExec
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1218.014,MMC,100,0,3,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,dsa.msc
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1484.001,Group Policy Modification,100,0,1,Cat’s Got Your Files: Lynx Ransomware > Privilege Escalation,Group Policy Creator Owners
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1486,Data Encrypted for Impact,100,0,1,Cat’s Got Your Files: Lynx Ransomware > Case Summary,deployed and executed Lynx ransomware
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1560.001,Archive via Utility,100,0,1,Cat’s Got Your Files: Lynx Ransomware > MITRE ATT&CK,Archive via Utility
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1563,,100,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1563.002,RDP Hijacking,100,1,8,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Diamond Model Indicators | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan | Cat’s Got Your Files: Lynx Ransomware > Execution,RDP Initial Access
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1518,,95,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1518.002,Backup Software Discovery,95,0,1,Cat’s Got Your Files: Lynx Ransomware > Impact,browsed the currently deployed backup jobs
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1039,Data from Network Shared Drive,90,1,3,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Collection | Cat’s Got Your Files: Lynx Ransomware > Key Takeaways,network shares
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1059.003,Windows Command Shell,90,0,1,Cat’s Got Your Files: Lynx Ransomware > Execution,Windows Command Shell (`cmd.exe`)
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1078.002,Domain Accounts,90,1,4,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Privilege Escalation,authenticated using a different account
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1560,Archive Collected Data,90,0,1,Cat’s Got Your Files: Lynx Ransomware > Exfiltration,archived files
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1588.002,Tool,90,0,2,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,purchased this license
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1021,Remote Services,80,0,2,Cat’s Got Your Files: Lynx Ransomware > Credential Access | Cat’s Got Your Files: Lynx Ransomware > Lateral Movement,Remote Desktop Protocol
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1048,Exfiltration Over Alternative Protocol,80,0,1,Cat’s Got Your Files: Lynx Ransomware > Exfiltration,upload feature
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1070.004,File Deletion,80,0,2,Cat’s Got Your Files: Lynx Ransomware > Case Summary | Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,delete existing backup jobs
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1584,Compromise Infrastructure,80,1,2,Cat’s Got Your Files: Lynx Ransomware > Command and Control,Railnet LLC
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1588,Obtain Capabilities,80,0,1,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,buy SoftPerfect
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1484,,60,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1059,,55,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1012,Query Registry,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,queried the registry
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1040,Network Sniffing,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Detections,Potential Scan
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1059.008,Network Device CLI,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,network discovery
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1070,Indicator Removal,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Defense Evasion,obscure their activity
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1080,Taint Shared Content,20,1,2,Cat’s Got Your Files: Lynx Ransomware > Detections,Suspicious ADS File
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1082,System Information Discovery,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,systeminfo
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1110,,20,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1110.004,Credential Stuffing,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Credential Access,breach dumps
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1133,External Remote Services,20,1,1,Cat’s Got Your Files: Lynx Ransomware > MITRE ATT&CK,External Remote Services
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1190,Exploit Public-Facing Application,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Case Summary,the threat actor returned via RDP from a new source IP address
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1218,System Binary Proxy Execution,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Detections,Suspicious ADS File
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1218.003,CMSTP,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Detections,Command Executed Via Run
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1219,,20,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1219.002,Remote Desktop Software,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,Netscan was used
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1484.002,Trust Modification,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Key Takeaways,added them to privileged
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1490,Inhibit System Recovery,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Impact,removed backups
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1557,,20,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1557.001,Name Resolution Poisoning and SMB Relay,20,1,2,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,making connections over SMB
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1564,Hide Artifacts,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Defense Evasion,obscure their activity
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1590,,20,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1590.005,IP Addresses,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Case Summary,associated with Railnet LLC
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1595,,20,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1595.002,Vulnerability Scanning,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Detections,Netscan
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1608,,20,0,0,,
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1608.001,Upload Malware,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Command and Control,bulletproof hosting services
+dfir-2025-12-17-cats-got-your-files-lynx-ransomware,T1654,Log Enumeration,20,1,1,Cat’s Got Your Files: Lynx Ransomware > Discovery > Netscan,queried the registry on the beachhead host

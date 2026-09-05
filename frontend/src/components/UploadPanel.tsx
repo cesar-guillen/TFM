@@ -7,6 +7,10 @@ import {
   type VerifyMode,
 } from "../api/client";
 
+// Mirrors MAX_UPLOAD_BYTES in the backend's ingest route, so an oversized file
+// is refused before it is uploaded rather than after.
+const MAX_UPLOAD_MB = 64;
+
 const REPORT_TYPE_HINTS: Record<ReportType, string> = {
   incident:
     "A write-up of an intrusion that actually happened — maps what the attacker was observed doing.",
@@ -27,66 +31,127 @@ const VERDICT_MODE_HINTS: Record<VerdictMode, string> = {
     "Each candidate technique is judged on its own — slightly better recall and identical results run-to-run, but can raise false positives on some reports and takes ~1.5× longer.",
 };
 
-// The options we steer users toward. Strict (drop) measured best on exact F1
-// in the eval harness (2026-08-22: mean 0.551 → 0.615 across the three
-// labelled reports, false positives roughly halved) and was the recommended
-// default for that reason — but silently dropping a low-confidence finding
-// means a real technique can vanish with nothing to notice. Balanced (demote)
-// became the recommendation on 2026-08-28 at the user's explicit request:
-// nothing is removed, low-confidence findings are just outlined in yellow in
-// the matrix so the reviewer sees exactly what to double-check. Keep this in
-// sync with `verify_mode` in backend/app/core/config.py. Report type has no
-// recommendation — it depends on the document.
+type OcrMode = "on" | "off";
+
+const OCR_MODE_HINTS: Record<OcrMode, string> = {
+  on: "Screenshots (console output, dashboards, sandbox logs) are OCR'd and included as evidence. Finds more, especially in log/terminal-heavy reports; can add noisy findings on reports dominated by UI screenshots. Adds roughly 15-30s to ingest.",
+  off: "Only the report's typeset text is read — screenshots are skipped, same as before this feature existed.",
+};
+
+// The options we steer users toward. Strict scores best on the eval harness,
+// but dropping a low-confidence finding means a real technique can vanish with
+// nothing to notice, so Balanced is recommended instead: nothing is removed,
+// low-confidence findings are just outlined for review. Individual became the
+// recommended verdict mode 2026-09-05 (moved from Grouped): on the three
+// labelled real DFIR Report intrusions, Individual+Balanced beat Grouped+
+// Balanced on exact F1 and precision on 3 of 3 reports, directly fixing a
+// user-reported miss on AD/Discovery techniques (local group/account
+// enumeration, DCSync) under the old default — see verdict_mode in
+// backend/app/core/config.py for the full numbers. Keep both in sync with
+// their backend settings. Report type has no recommendation — it depends on
+// the document.
 const RECOMMENDED_VERIFY: VerifyMode = "demote";
-const RECOMMENDED_VERDICT: VerdictMode = "menu";
+const RECOMMENDED_VERDICT: VerdictMode = "independent";
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-interface UploadPanelProps {
-  onStarted: (result: IngestStarted) => void;
-  variant?: "hero" | "compact";
-  /** Verification-mode picker (owned by the page — the value is used when
-   * the mapping run starts, after ingest finishes). Omit to hide it. */
-  verifyMode?: VerifyMode;
-  onVerifyModeChange?: (value: VerifyMode) => void;
-  /** Verdict-architecture picker, same ownership pattern. Omit to hide it. */
-  verdictMode?: VerdictMode;
-  onVerdictModeChange?: (value: VerdictMode) => void;
-  /** Report-kind picker (incident vs pentest), same ownership pattern. */
-  reportType?: ReportType;
-  onReportTypeChange?: (value: ReportType) => void;
+/** One labelled row of mutually exclusive run options, with a hint line for
+ * whichever is selected. */
+function OptionPicker<T extends string>({
+  title,
+  options,
+  value,
+  onChange,
+  hint,
+  recommended,
+}: {
+  title: string;
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  hint: string;
+  recommended?: { value: T; label: string };
+}) {
+  return (
+    <div className="uploader__option">
+      <div className="uploader__option-row">
+        <span className="uploader__option-title">
+          <strong>{title}</strong>
+          {recommended && <span className="uploader__rec-pill">Recommended: {recommended.label}</span>}
+        </span>
+        <div className="uploader__modes" role="radiogroup" aria-label={title}>
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={value === option.value}
+              title={option.value === recommended?.value ? "Recommended" : undefined}
+              className={
+                `uploader__mode${value === option.value ? " uploader__mode--active" : ""}` +
+                (option.value === recommended?.value ? " uploader__mode--recommended" : "")
+              }
+              onClick={() => onChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="uploader__option-hint">{hint}</div>
+    </div>
+  );
 }
 
+interface UploadPanelProps {
+  onStarted: (result: IngestStarted) => void;
+  /** Run-option pickers, each owned by the page (the values are used when the
+   * mapping run starts, after ingest finishes). Omit a change handler to hide
+   * that picker. */
+  verifyMode?: VerifyMode;
+  onVerifyModeChange?: (value: VerifyMode) => void;
+  verdictMode?: VerdictMode;
+  onVerdictModeChange?: (value: VerdictMode) => void;
+  reportType?: ReportType;
+  onReportTypeChange?: (value: ReportType) => void;
+  ocrEnabled?: boolean;
+  onOcrEnabledChange?: (value: boolean) => void;
+}
+
+/** Drop zone for the report PDF. Picking a file stages it and opens a dialog
+ * to confirm the run's options; nothing is uploaded until that is confirmed. */
 export default function UploadPanel({
   onStarted,
-  variant = "hero",
   verifyMode = "demote",
   onVerifyModeChange,
   verdictMode = "menu",
   onVerdictModeChange,
   reportType = "incident",
   onReportTypeChange,
+  ocrEnabled = true,
+  onOcrEnabledChange,
 }: UploadPanelProps) {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  // Picking a file no longer uploads immediately: it's staged here and a
-  // dialog opens over the page to confirm the run's options (report kind +
-  // the mapping toggles) before anything is sent to the backend.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function stageFile(files: FileList | null) {
     const file = files?.[0];
-    if (!file) return;
-    setError("");
-    setPendingFile(file);
     // Reset the input so cancelling and re-picking the same file re-fires
     // onChange (a same-value change event is otherwise swallowed).
     if (inputRef.current) inputRef.current.value = "";
+    if (!file) return;
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setError(`That PDF is ${formatSize(file.size)} — the limit is ${MAX_UPLOAD_MB} MB.`);
+      return;
+    }
+    setError("");
+    setPendingFile(file);
   }
 
   function cancelPending() {
@@ -100,7 +165,7 @@ export default function UploadPanel({
     setLoading(true);
     setError("");
     try {
-      const result = await ingestPdf(pendingFile);
+      const result = await ingestPdf(pendingFile, ocrEnabled);
       setPendingFile(null);
       onStarted(result);
     } catch (err) {
@@ -111,21 +176,19 @@ export default function UploadPanel({
     }
   }
 
-  // Escape closes the dialog (unless the upload is already in flight).
   useEffect(() => {
     if (!pendingFile) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") cancelPending();
+      if (e.key !== "Escape" || loading) return;
+      setPendingFile(null);
+      setError("");
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingFile, loading]);
 
-  const compact = variant === "compact";
-
   return (
-    <div className={`uploader${compact ? " uploader--compact" : ""}`}>
+    <div className="uploader">
       <div
         className={`uploader__dropzone${dragOver ? " uploader__dropzone--over" : ""}`}
         onClick={() => inputRef.current?.click()}
@@ -140,13 +203,7 @@ export default function UploadPanel({
           stageFile(e.dataTransfer.files);
         }}
       >
-        <svg
-          width={compact ? 22 : 30}
-          height={compact ? 22 : 30}
-          viewBox="0 0 24 24"
-          fill="none"
-          style={{ margin: compact ? "0 auto 0.4rem" : "0 auto 0.7rem", display: "block" }}
-        >
+        <svg width={30} height={30} viewBox="0 0 24 24" fill="none" style={{ margin: "0 auto 0.7rem", display: "block" }}>
           <path
             d="M12 16V4m0 0L7 9m5-5l5 5"
             stroke="var(--text-dim)"
@@ -162,12 +219,8 @@ export default function UploadPanel({
             strokeLinejoin="round"
           />
         </svg>
-        <div className="uploader__title">
-          {compact ? "Upload another report" : "Drop a PDF here, or click to browse"}
-        </div>
-        {!compact && (
-          <div className="uploader__hint">Incident reports, pentest results, security policies</div>
-        )}
+        <div className="uploader__title">Drop a PDF here, or click to browse</div>
+        <div className="uploader__hint">Incident reports, pentest results, security policies</div>
         <input
           ref={inputRef}
           type="file"
@@ -200,88 +253,58 @@ export default function UploadPanel({
             </div>
 
             {onReportTypeChange && (
-              <div className="uploader__option">
-                <div className="uploader__option-row">
-                  <span className="uploader__option-title">
-                    <strong>Report type</strong>
-                  </span>
-                  <div className="uploader__modes" role="radiogroup" aria-label="Report type">
-                    {(["incident", "pentest"] as ReportType[]).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="radio"
-                        aria-checked={reportType === mode}
-                        className={`uploader__mode${reportType === mode ? " uploader__mode--active" : ""}`}
-                        onClick={() => onReportTypeChange(mode)}
-                      >
-                        {mode === "incident" ? "Incident report" : "Pentest report"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="uploader__option-hint">{REPORT_TYPE_HINTS[reportType]}</div>
-              </div>
+              <OptionPicker
+                title="Report type"
+                options={[
+                  { value: "incident", label: "Incident report" },
+                  { value: "pentest", label: "Pentest report" },
+                ]}
+                value={reportType}
+                onChange={onReportTypeChange}
+                hint={REPORT_TYPE_HINTS[reportType]}
+              />
             )}
 
             {onVerifyModeChange && (
-              <div className="uploader__option">
-                <div className="uploader__option-row">
-                  <span className="uploader__option-title">
-                    <strong>Remove low-confidence findings</strong>
-                    <span className="uploader__rec-pill">Recommended: Balanced</span>
-                  </span>
-                  <div className="uploader__modes" role="radiogroup" aria-label="Remove low-confidence findings">
-                    {(["off", "demote", "drop"] as VerifyMode[]).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="radio"
-                        aria-checked={verifyMode === mode}
-                        title={mode === RECOMMENDED_VERIFY ? "Recommended" : undefined}
-                        className={
-                          `uploader__mode${verifyMode === mode ? " uploader__mode--active" : ""}` +
-                          (mode === RECOMMENDED_VERIFY ? " uploader__mode--recommended" : "")
-                        }
-                        onClick={() => onVerifyModeChange(mode)}
-                      >
-                        {mode === "off" ? "Off" : mode === "demote" ? "Balanced" : "Strict"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="uploader__option-hint">{VERIFY_MODE_HINTS[verifyMode]}</div>
-              </div>
+              <OptionPicker
+                title="Remove low-confidence findings"
+                options={[
+                  { value: "off", label: "Off" },
+                  { value: "demote", label: "Balanced" },
+                  { value: "drop", label: "Strict" },
+                ]}
+                value={verifyMode}
+                onChange={onVerifyModeChange}
+                hint={VERIFY_MODE_HINTS[verifyMode]}
+                recommended={{ value: RECOMMENDED_VERIFY, label: "Balanced" }}
+              />
             )}
 
             {onVerdictModeChange && (
-              <div className="uploader__option">
-                <div className="uploader__option-row">
-                  <span className="uploader__option-title">
-                    <strong>Technique judging</strong>
-                    <span className="uploader__rec-pill">Recommended: Grouped</span>
-                  </span>
-                  <div className="uploader__modes" role="radiogroup" aria-label="Technique judging">
-                    {(["menu", "independent"] as VerdictMode[]).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="radio"
-                        aria-checked={verdictMode === mode}
-                        title={mode === RECOMMENDED_VERDICT ? "Recommended" : undefined}
-                        className={
-                          `uploader__mode${verdictMode === mode ? " uploader__mode--active" : ""}` +
-                          (mode === RECOMMENDED_VERDICT ? " uploader__mode--recommended" : "")
-                        }
-                        onClick={() => onVerdictModeChange(mode)}
-                      >
-                        {mode === "menu" ? "Grouped" : "Individual"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="uploader__option-hint">{VERDICT_MODE_HINTS[verdictMode]}</div>
-              </div>
+              <OptionPicker
+                title="Technique judging"
+                options={[
+                  { value: "menu", label: "Grouped" },
+                  { value: "independent", label: "Individual" },
+                ]}
+                value={verdictMode}
+                onChange={onVerdictModeChange}
+                hint={VERDICT_MODE_HINTS[verdictMode]}
+                recommended={{ value: RECOMMENDED_VERDICT, label: "Individual" }}
+              />
+            )}
+
+            {onOcrEnabledChange && (
+              <OptionPicker
+                title="Read text in screenshots"
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                value={ocrEnabled ? "on" : "off"}
+                onChange={(value) => onOcrEnabledChange(value === "on")}
+                hint={OCR_MODE_HINTS[ocrEnabled ? "on" : "off"]}
+              />
             )}
 
             {error && (
