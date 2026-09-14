@@ -1,12 +1,16 @@
-"""Batch-map the DFIR Report PDFs in /data/dfir_reports under the shipped
-"Balanced + Grouped" configuration, and dump the results as CSV for
-comparison against each report's own published ATT&CK table.
+"""Batch-map the DFIR Report PDFs in /data/dfir_reports, one fresh de-leaked
+ingest per PDF each run, and dump the results as CSV for comparison against
+each report's own published ATT&CK table (only 3 of the 10 have that table
+transcribed into app/eval/ground_truth.py for scoring — the rest are
+unscored technique dumps).
 
-Config: verdict=menu (Grouped), verify=demote (Balanced), report_type=incident,
-top_k from settings — i.e. exactly what the UI's default upload options run.
-Each report's own published ATT&CK table is stripped before ingest.
+Defaults to the historical "Balanced + Grouped" shipped config; override with
+--verdict/--verify to run a different combination into a separate --out dir
+(so two configs' results never overwrite each other). report_type=incident,
+top_k from settings. Each report's own published ATT&CK table is stripped
+before ingest (app/eval/deleak.py) so this measures mapping, not table-reading.
 
-Writes to /data/dfir_out:
+Writes to --out (default /data/dfir_out):
   <stem>.techniques.csv   one row per technique in the final layer  <- compare
   <stem>.mappings.csv     one row per evidence instance (adjudication detail)
   all_techniques.csv      every report concatenated
@@ -16,7 +20,9 @@ Resumable: a report whose .techniques.csv already exists is skipped, so an
 interrupted run continues where it stopped.
 
     docker compose exec -T -e PYTHONPATH=/app backend \
-        python /data/dfir_batch.py [--only substring] [--redo]
+        python /data/dfir_batch.py [--verdict menu|independent] \
+        [--verify off|demote|drop] [--out /data/dfir_out_X] \
+        [--only substring] [--redo]
 """
 
 import csv
@@ -36,10 +42,15 @@ from app.eval.deleak import deleak_markdown
 from app.ingest.pdf_to_markdown import pdf_to_markdown
 
 SRC = "/data/dfir_reports"
-OUT = "/data/dfir_out"
 
-VERDICT = "menu"       # "Grouped"
-VERIFY = "demote"      # "Balanced"
+
+def _arg(flag: str, default: str) -> str:
+    return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else default
+
+
+VERDICT = _arg("--verdict", "menu")          # "menu" (Grouped) | "independent" (Individual)
+VERIFY = _arg("--verify", "demote")          # "off" | "demote" (Balanced) | "drop" (Strict)
+OUT = _arg("--out", "/data/dfir_out")
 REPORT_TYPE = "incident"
 TOP_K = settings.map_candidates
 
