@@ -1,4 +1,4 @@
-# TFM — ATT&CK Mapper
+# TFM: ATT&CK Mapper
 
 Trabajo de Fin de Máster (César Guillén Cuñat). A locally-run, Dockerized tool that ingests security artifacts (incident reports, pentest reports, security policies) and automatically generates a MITRE ATT&CK matrix of observed TTPs, with a chat interface to ask questions about or edit the result.
 
@@ -10,7 +10,7 @@ The whole pipeline works end-to-end:
 
 - **Ingest**: upload a PDF → Markdown conversion (`pymupdf4llm`) → section-aware chunking with role filtering (remediation/boilerplate sections excluded) → embedding into a local Chroma store, with live progress in the UI.
 - **Retrieval**: hybrid dense + BM25 search over the bundled ATT&CK v19.1 knowledge base (~700 techniques, pre-embedded seed ships in the repo), fused by reciprocal rank fusion.
-- **Mapping**: a local LLM (via Ollama) judges which candidate techniques each chunk actually evidences — schema-constrained output, verbatim evidence quotes checked against the source text — then results are aggregated into a Navigator-style layer with per-technique evidence comments (strongest evidence first). Supports both **incident reports** (maps the attacker's observed actions) and **pentest / red-team reports** (maps the testers' performed actions; findings merely noted but not exploited are excluded) — chosen per upload in the options dialog, along with false-positive filtering and the technique-judging mode.
+- **Mapping**: a local LLM (via Ollama) judges which candidate techniques each chunk actually evidences (schema-constrained output, verbatim evidence quotes checked against the source text), then results are aggregated into a Navigator-style layer with per-technique evidence comments (strongest evidence first). Supports both **incident reports** (maps the attacker's observed actions) and **pentest / red-team reports** (maps the testers' performed actions; findings merely noted but not exploited are excluded), chosen per upload in the options dialog, along with false-positive filtering and the technique-judging mode.
 - **UI**: a matrix library dashboard (open/edit/delete previously computed matrices, upload new reports), a live-updating matrix preview during runs, and a full Navigator-style editor with scoring, sorting, JSON/SVG export, and save-to-library.
 
 Not implemented yet: the chat interface (`/api/chat` is a stub) and a reranker over the fused retrieval candidates.
@@ -52,7 +52,7 @@ docker-compose.yml       + .gpu / .cpu / .basic profile overlays
 
 ## Running it
 
-Pick the profile that matches your machine — one command, nothing else to configure:
+Pick the profile that matches your machine: one command, nothing else to configure:
 
 | Your machine | Command |
 |---|---|
@@ -61,10 +61,10 @@ Pick the profile that matches your machine — one command, nothing else to conf
 | No GPU, ≤8 GB RAM | `docker compose -f docker-compose.yml -f docker-compose.basic.yml up -d --build` |
 
 - **GPU** runs the full-power configuration: `llama3.1:8b`, 4 parallel workers, models pinned in memory. Requires the NVIDIA Container Toolkit (see below). Mapping a report takes ~30-60 s.
-- **CPU** keeps the same `llama3.1:8b` quality, with idle memory release. Parallelism is auto-sized from RAM at startup: 4 concurrent decodes on ≥10 GiB machines (~6 GB footprint), 2 below that (~5.5 GB) — so it also fits the ~7 GiB VM that WSL2 gives a 16 GB Windows machine by default (see the WSL2 note below). Mapping takes minutes instead of seconds.
-- **Basic** swaps to the small `llama3.2:3b` model (~2 GB download, ~4 GB footprint) — noticeably worse mappings, but it runs on modest laptops.
+- **CPU** keeps the same `llama3.1:8b` quality, with idle memory release. Parallelism is auto-sized from RAM at startup: 4 concurrent decodes on ≥10 GiB machines (~6 GB footprint), 2 below that (~5.5 GB), so it also fits the ~7 GiB VM that WSL2 gives a 16 GB Windows machine by default (see the WSL2 note below). Mapping takes minutes instead of seconds.
+- **Basic** swaps to the small `llama3.2:3b` model (~2 GB download, ~4 GB footprint): noticeably worse mappings, but it runs on modest laptops.
 
-**WSL2 / Docker Desktop note**: by default WSL2 gives the Linux VM only **half the host's RAM** — a 16 GB Windows machine runs everything inside a ~7.2 GiB VM, and that VM total (not the host's 16 GB) is what the auto-sizing sees. The CPU profile fits, but with little headroom; for comfort (or to get the 4-worker tier back) give the VM more memory: create `C:\Users\<you>\.wslconfig` with
+**WSL2 / Docker Desktop note**: by default WSL2 gives the Linux VM only **half the host's RAM**: a 16 GB Windows machine runs everything inside a ~7.2 GiB VM, and that VM total (not the host's 16 GB) is what the auto-sizing sees. The CPU profile fits, but with little headroom; for comfort (or to get the 4-worker tier back) give the VM more memory: create `C:\Users\<you>\.wslconfig` with
 
 ```ini
 [wsl2]
@@ -75,11 +75,11 @@ then run `wsl --shutdown` from Windows and restart Docker.
 
 Both CPU profiles automatically pin inference to **all CPU threads except two** (computed at container start, whatever the core count), so the machine stays responsive while a report is being mapped.
 
-**Apple Silicon (M-series) Macs / ARM64**: the whole stack runs natively on `linux/arm64` — the frontend lockfile ships every platform's native binaries (esbuild/Rollup), and every backend dependency and the `ollama/ollama` image have arm64 builds, so no source compilation is needed. Use the **No GPU** profile (`docker-compose.cpu.yml`, or `docker-compose.basic.yml` on ≤8 GB): the GPU override is NVIDIA-only, and a Mac's Metal GPU isn't reachable from inside a Docker container anyway, so inference runs on CPU. (Docker Desktop on a Mac builds and runs arm64 containers by default — don't force `platform: linux/amd64`, which would run everything under slow x86 emulation.)
+**Apple Silicon (M-series) Macs / ARM64**: the whole stack runs natively on `linux/arm64`; the frontend lockfile ships every platform's native binaries (esbuild/Rollup), and every backend dependency and the `ollama/ollama` image have arm64 builds, so no source compilation is needed. Use the **No GPU** profile (`docker-compose.cpu.yml`, or `docker-compose.basic.yml` on ≤8 GB): the GPU override is NVIDIA-only, and a Mac's Metal GPU isn't reachable from inside a Docker container anyway, so inference runs on CPU. (Docker Desktop on a Mac builds and runs arm64 containers by default; don't force `platform: linux/amd64`, which would run everything under slow x86 emulation.)
 
 Tip: to make your profile stick so plain `docker compose up` / `docker compose down` uses it, add a line to `.env`, e.g. `COMPOSE_FILE=docker-compose.yml:docker-compose.cpu.yml`.
 
-(Every other setting has a working default baked into `docker-compose.yml`; create a `.env` only to override them — ports, model names, `MAP_WORKERS`/`OLLAMA_NUM_PARALLEL` parallelism. Values set in `.env` win over profile defaults.)
+(Every other setting has a working default baked into `docker-compose.yml`; create a `.env` only to override them: ports, model names, `MAP_WORKERS`/`OLLAMA_NUM_PARALLEL` parallelism. Values set in `.env` win over profile defaults.)
 
 - Frontend: http://localhost:5173
 - Backend: http://localhost:8000 (`/health`, `/api/ingest`, `/api/chat`, `/api/matrix`)
@@ -87,7 +87,7 @@ Tip: to make your profile stick so plain `docker compose up` / `docker compose d
 
 That's the only command needed. On first boot the `ollama-init` service pulls the two Ollama models (names configurable in `.env`; the chat model is a ~4.7 GB download, so the backend waits a few minutes before starting), and the backend restores the pre-embedded ATT&CK knowledge base into Chroma on startup. Both steps are near-instant no-ops on every boot after that.
 
-> **First start looks stuck?** It isn't — it's the model download. With `up -d` the only visible sign is the backend sitting in "Waiting". Watch the download live (progress heartbeat every 20 s) with:
+> **First start looks stuck?** It isn't; it's the model download. With `up -d` the only visible sign is the backend sitting in "Waiting". Watch the download live (progress heartbeat every 20 s) with:
 >
 > ```
 > docker compose logs -f ollama-init
@@ -95,13 +95,13 @@ That's the only command needed. On first boot the `ollama-init` service pulls th
 
 Uploaded reports persist under `./data/uploads/`; the vector store persists under `./data/chroma/`; Ollama models persist in the `ollama_models` volume.
 
-To rebuild the ATT&CK knowledge base from a newer MITRE release (re-embeds via Ollama and rewrites the bundled seed — see CLAUDE.md):
+To rebuild the ATT&CK knowledge base from a newer MITRE release (re-embeds via Ollama and rewrites the bundled seed):
 
 ```
 docker compose exec backend python -m app.attack.build_kb --refresh
 ```
 
-**Note on `OLLAMA_HOST`**: inside `docker-compose.yml` this is set to `http://ollama:11434` — `ollama` is the Compose service name, resolved by Docker's internal DNS to that container's private IP on the local Compose network. This is still entirely local (no traffic leaves the host); it's just how containers address each other instead of `localhost`, since each container has its own network namespace.
+**Note on `OLLAMA_HOST`**: inside `docker-compose.yml` this is set to `http://ollama:11434`; `ollama` is the Compose service name, resolved by Docker's internal DNS to that container's private IP on the local Compose network. This is still entirely local (no traffic leaves the host); it's just how containers address each other instead of `localhost`, since each container has its own network namespace.
 
 ### Uploads and limits
 
@@ -112,9 +112,8 @@ lands in `./data/uploads/`.
 
 The app itself has **no login**: it is meant to run on your own machine, bound to
 localhost. Do not publish those ports to a network without putting an
-authenticating reverse proxy in front — the `aws-ec2-deploy` branch has a Caddy
-configuration that does exactly that (HTTPS + HTTP Basic Auth). See the "Security
-posture" section of CLAUDE.md.
+authenticating reverse proxy in front; the `aws-ec2-deploy` branch has a Caddy
+configuration that does exactly that (HTTPS + HTTP Basic Auth).
 
 ### Host prerequisites
 
@@ -138,9 +137,9 @@ Plain `docker compose up` keeps working on CPU-only machines.
 ### Trying it with a sample report
 
 `samples/` has ready-to-upload PDFs for a quick test: four synthetic reference
-reports used to build and grade this project's eval harness (three incidents —
+reports used to build and grade this project's eval harness (three incidents:
 `meridian-grove_incident-report.pdf`, `meridian-health-partners_incident-report.pdf`,
-`openslop_incident-report.pdf` — plus one pentest,
+`openslop_incident-report.pdf`, plus one pentest,
 `acme-retail-group_pentest-report.pdf`) and ten real DFIR Report intrusions
 with their own published ATT&CK answer key stripped out
 (`*_no-answer-key.pdf`), so you can upload one and see what the pipeline maps
@@ -148,8 +147,7 @@ without already knowing the answer.
 
 ## Next steps
 
-The pipeline is complete end to end; what is left is listed in CLAUDE.md's
-"Current status". The largest unbuilt piece is the **chat interface** —
+The pipeline is complete end to end. The largest unbuilt piece is the **chat interface**:
 `/api/chat` is a stub and there is no chat UI, although conversing with the LLM
 about the generated matrix is a stated goal of the project. Smaller open items:
 wiring the matrix search box to the backend's hybrid retrieval (it currently
@@ -189,7 +187,7 @@ docker compose version        # must say v2.x
 git clone <your-repo-url> TFM
 cd TFM
 ```
-5. Launch — pick ONE profile for the machine
+5. Launch: pick ONE profile for the machine
 
 # No GPU, more than 8 GB RAM (the usual case):
 docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
