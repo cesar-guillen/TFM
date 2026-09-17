@@ -325,9 +325,9 @@ export default function UploadPanel({
                   onChange={(value) => onOcrEnabledChange(value === "on")}
                   hint={OCR_MODE_HINTS[ocrEnabled ? "on" : "off"]}
                 />
-                {ocrEnabled && (
+                {ocrEnabled && warmup?.device === "cpu" && (
                   <div className="badge badge-warning" style={{ width: "fit-content" }}>
-                    ⚠ OCR finds more chunks to map, which means a bigger matrix and a longer run — roughly 15-30s more just for OCR itself, plus whatever mapping that extra evidence adds.
+                    ⚠ OCR isn't recommended on CPU: it surfaces more chunks, which makes the run take longer.
                   </div>
                 )}
               </>
