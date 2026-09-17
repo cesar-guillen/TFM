@@ -111,17 +111,12 @@ def pdf_to_markdown(pdf_path: str, ocr_enabled: bool = True) -> str:
     try:
         raw = pymupdf.open(pdf_path)
         # Garbage-collect + clean before handing the PDF to pymupdf4llm.
-        # Fixes a measured 19-31x parse-time blowup (2026-09-05) on reports
-        # whose export tool references every embedded image from every
-        # page's resource dictionary (a PDF-export artifact, not real
-        # content duplication) — pymupdf4llm's layout detector decodes and
-        # MD5-hashes an image once per *reference*, so a 62-image, 41-page
-        # report bloats to ~2,500 decodes instead of 62. Cleaning collapses
-        # the redundant references before that ever happens. In-memory, no
-        # temp file. Verified byte-identical markdown output and functionally
-        # identical image metadata (only sub-pixel bbox float noise, ~1e-5pt,
-        # irrelevant at any real render DPI) on all 3 affected reports; cost
-        # on an already-fast report was 0.05s and still net faster overall.
+        # Some export tools reference every embedded image from every page's
+        # resource dictionary (a PDF-export artifact, not real duplication),
+        # which makes pymupdf4llm's layout detector decode/MD5-hash an image
+        # once per *reference* instead of once per image — a huge parse-time
+        # blowup on image-heavy reports. Cleaning collapses the redundant
+        # references first. In-memory, no temp file; output is unaffected.
         cleaned_bytes = raw.tobytes(garbage=4, deflate=True, clean=True)
         raw.close()
         doc = pymupdf.open(stream=cleaned_bytes, filetype="pdf")
@@ -129,11 +124,9 @@ def pdf_to_markdown(pdf_path: str, ocr_enabled: bool = True) -> str:
     except Exception as exc:
         raise PdfParseError(str(exc)) from exc
 
-    # OCR embedded screenshots (console output, dashboards) that the text
-    # layer can't see (app/ingest/ocr.py) — page_chunks=True's own per-page
-    # `text` fields concatenate to byte-identical output to the plain-string
-    # call (verified 2026-09-04), so this only adds content, never changes
-    # existing extraction. Degrades to a no-op if tesseract isn't installed.
+    # OCR embedded screenshots that the text layer can't see (app/ingest/ocr.py).
+    # Only adds content — page_chunks=True's per-page `text` fields concatenate
+    # to the same output as the plain-string call. No-op if tesseract is absent.
     ocr_by_page = ocr_document_images(doc, pages) if ocr_enabled else {}
     parts = []
     for i, page in enumerate(pages):

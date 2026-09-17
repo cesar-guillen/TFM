@@ -135,6 +135,17 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
 
 Plain `docker compose up` keeps working on CPU-only machines.
 
+### Trying it with a sample report
+
+`samples/` has ready-to-upload PDFs for a quick test: four synthetic reference
+reports used to build and grade this project's eval harness (three incidents —
+`meridian-grove_incident-report.pdf`, `meridian-health-partners_incident-report.pdf`,
+`openslop_incident-report.pdf` — plus one pentest,
+`acme-retail-group_pentest-report.pdf`) and ten real DFIR Report intrusions
+with their own published ATT&CK answer key stripped out
+(`*_no-answer-key.pdf`), so you can upload one and see what the pipeline maps
+without already knowing the answer.
+
 ## Next steps
 
 The pipeline is complete end to end; what is left is listed in CLAUDE.md's

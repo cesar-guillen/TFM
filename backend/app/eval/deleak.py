@@ -3,13 +3,11 @@
 Public CTI reports frequently end with the author's own ATT&CK table. Leaving
 it in measures the pipeline's ability to *read a mapping someone else wrote*,
 not to derive one — and `EXPLICIT_IDS` injection compounds it by seating any
-cited id at rank 1. Measured on the 10-report DFIR corpus (2026-09-02): 35
-mapping instances came from `MITRE ATT&CK` sections and 10 core techniques were
-recoverable ONLY from there, inflating exact recall 0.549 -> 0.584.
+cited id at rank 1.
 
 Evaluation-only, and opt-in per report (`ReportGroundTruth.deleak`): production
-ingest keeps citations, which are a deliberate feature, and `acme-pentest`'s
-documented results depend on its cited-id findings table.
+ingest keeps citations, which are a deliberate feature, and some labelled
+reports' documented results depend on their cited-id findings tables.
 """
 
 import re

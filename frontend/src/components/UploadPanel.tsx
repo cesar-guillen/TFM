@@ -42,13 +42,7 @@ const OCR_MODE_HINTS: Record<OcrMode, string> = {
 // The options we steer users toward. Strict scores best on the eval harness,
 // but dropping a low-confidence finding means a real technique can vanish with
 // nothing to notice, so Balanced is recommended instead: nothing is removed,
-// low-confidence findings are just outlined for review. Individual became the
-// recommended verdict mode 2026-09-05 (moved from Grouped): on the three
-// labelled real DFIR Report intrusions, Individual+Balanced beat Grouped+
-// Balanced on exact F1 and precision on 3 of 3 reports, directly fixing a
-// user-reported miss on AD/Discovery techniques (local group/account
-// enumeration, DCSync) under the old default — see verdict_mode in
-// backend/app/core/config.py for the full numbers. Keep in sync with the
+// low-confidence findings are just outlined for review. Keep in sync with the
 // backend setting. Report type has no recommendation — it depends on the
 // document.
 const RECOMMENDED_VERIFY: VerifyMode = "demote";

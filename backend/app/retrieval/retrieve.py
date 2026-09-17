@@ -49,16 +49,10 @@ ATTACK_ID_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
 # must name exactly one mechanism with one canonical (sub-)technique, and must
 # not double as an ordinary English word (that's why "net group"/"net user"/
 # "dir"/"ping" aren't here: single-token matching can't safely disambiguate
-# them, and common words would false-fire on unrelated prose).
-#
-# Discovery entries (added 2026-09-03) target the corpus's single largest
-# retrieval-ceiling gap: a real-report enumeration sentence ("ran net group,
-# whoami, systeminfo, nltest, tasklist...") is itself a packed list, so one
-# command wins the chunk's slot competition and the rest are structurally
-# unreachable — measured on 3 external DFIR Report intrusions, Discovery was
-# 40% of every miss and unreachable in 3/3 (data/dfir_analysis/). Same
-# mechanism as the lateral-movement entries below, applied to the tactic
-# actually costing the most recall on real reports.
+# them, and common words would false-fire on unrelated prose). The Discovery
+# entries target compressed enumeration sentences ("ran net group, whoami,
+# systeminfo, nltest, tasklist...") where one command wins the chunk's slot
+# competition and the rest become structurally unreachable.
 MECHANISM_ALIASES = {
     "ssh": "T1021.004",
     "rdp": "T1021.001",
@@ -71,11 +65,7 @@ MECHANISM_ALIASES = {
     "ipconfig": "T1016",
     "nltest": "T1482",
     "nmap": "T1046",
-    # SoftPerfect NetScan (added 2026-09-05): a second, distinct tool naming
-    # the same technique — nmap alone missed it on a real report that used
-    # NetScan by name and as `netscan.exe` dozens of times, T1046 never once
-    # offered as a candidate through any other retrieval signal.
-    "netscan": "T1046",
+    "netscan": "T1046",  # SoftPerfect NetScan — a second tool naming T1046
     "localgroup": "T1069.001",
     "icacls": "T1222",
     "dcsync": "T1003.006",
@@ -83,18 +73,11 @@ MECHANISM_ALIASES = {
 _MECHANISM_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 # Same idea, for mechanisms named by a short PHRASE rather than one token —
-# single-token matching can't express these (MECHANISM_ALIASES' own docstring
-# rules out "net group"/"net user" for exactly this reason: the tokens "net"
-# and "group" are each too common alone to inject safely). A phrase is safe
-# where its constituent words are common but the *sequence* is specific to
-# the mechanism and essentially never appears in unrelated report prose.
-# Added 2026-09-05, same motivation and corpus as the discovery entries above:
-# a real DFIR Report bullet reads "Net - Enumerate user groups, domain
-# accounts, computers, and password policy" — one compressed sentence naming
-# four Discovery techniques via a bare, ambiguous "Net" that no single-token
-# alias can resolve. Deliberately narrow: "user groups" and "computers" stay
-# unaliased from that same sentence (ambiguous local-vs-domain, and "computers"
-# alone is too generic), so this closes part of that gap, not all of it.
+# single-token matching can't express these ("net group"/"net user" can't be
+# aliased for the same reason "net"/"group" alone can't: too common). A phrase
+# is safe where its constituent words are common but the *sequence* is
+# specific to the mechanism and essentially never appears in unrelated report
+# prose. Deliberately narrow — only add an entry once ambiguity is checked.
 PHRASE_ALIASES = {
     "domain accounts": "T1087.002",
     "password policy": "T1201",

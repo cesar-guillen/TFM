@@ -76,15 +76,10 @@ class Settings(BaseSettings):
 
     # Verdict architecture: "menu" (one call per chunk, all candidates at once)
     # or "independent" (one small call per candidate). Overridable per run.
-    # Default moved menu -> independent 2026-09-05: on the three labelled real
-    # DFIR Report intrusions (with OCR, which is itself on by default),
-    # independent+demote beat the previous menu+demote default on exact F1 on
-    # 3 of 3 reports (0.298->0.355, 0.418->0.503, 0.122->0.155) and precision
-    # on 3 of 3; recall rose on 2 of 3 and fell on bengalseo specifically
-    # (30.6%->24.0%), the corpus's one non-ransomware, UI-screenshot-heavy
-    # outlier. Directly motivated by a real user-reported miss (AD/Discovery
-    # techniques — local group/account enumeration, DCSync — on
-    # dfir-rdp-ransomhub under the old menu default), confirmed fixed here.
+    # independent scores better on exact F1 and precision on real DFIR
+    # reports; menu lets stronger evidence in the same chunk crowd out
+    # weaker-but-real techniques (e.g. AD/Discovery enumeration losing to
+    # LSASS dumping).
     verdict_mode: str = "independent"
 
     # Prompt family: "incident" (the intruder is the adversary) or "pentest"

@@ -183,9 +183,9 @@ _HEALTH_ACCEPTABLE: dict[str, str] = {
     "T1560": "parent — Archive Collected Data",
     "T1074": "parent — Data Staged",
     "T1567": "parent — Exfiltration Over Web Service",
-    # Defensible secondary readings (several promoted 2026-07-16 after
-    # reviewing the mapper's evidence quotes against the source — the report
-    # author's 24-technique list undercounts what the narrative evidences).
+    # Defensible secondary readings, promoted after reviewing the mapper's
+    # evidence quotes against the source — the report author's 24-technique
+    # list undercounts what the narrative evidences.
     "T1518": "installed-software enumeration (§4.3) also reads as Software Discovery",
     "T1074.001": "archives are first assembled locally before the file-server staging (§4.7)",
     "T1041": "exfil rides the existing HTTPS channel — defensible alongside T1567.002 (§4.7)",
@@ -198,13 +198,11 @@ _HEALTH_ACCEPTABLE: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Acme Retail Group pentest (`sample_pentest.pdf`) — a fictional external+
 # internal network penetration test escalating a simulated phishing foothold to
-# full AD domain compromise. Labels supplied by the user (2026-07-24) from the
-# report's own findings; the demonstrably-executed backbone is CORE, recon /
-# secondary / not-exploited-but-listed / tooling reads are ACCEPTABLE. NB the
-# report cites T1562.002 for F-13, which is RETIRED in v19.1 — its equivalent,
-# T1685.001 "Disable or Modify Windows Event Log", is used here (the enum-
-# constrained mapper cannot emit the old id). "T1049" is the user's id for the
-# network-enumeration finding (F-07).
+# full AD domain compromise. The demonstrably-executed backbone is CORE, recon
+# / secondary / not-exploited-but-listed / tooling reads are ACCEPTABLE. NB
+# the report cites T1562.002 for F-13, which is RETIRED in v19.1 — its
+# equivalent, T1685.001 "Disable or Modify Windows Event Log", is used here.
+# "T1049" is the report's own id for the network-enumeration finding (F-07).
 # ---------------------------------------------------------------------------
 
 _PENTEST_CORE: dict[str, str] = {
@@ -250,15 +248,13 @@ _PENTEST_ACCEPTABLE: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# OpenSlop (synthetic, `*OpenSlop.pdf`, added 2026-07-25) — Windows-domain
-# ransomware/exfil intrusion authored by the user specifically to stress
-# recall: 12 tactics, many behaviors phrased in plain prose without signal
-# words (Kerberoasting never named in §4.4, masquerading only implied by the
-# fake task name). The user's 34-technique seed list was written in pre-v19
-# ids; two were translated to the bundled v19.1 catalog (T1562.001 → T1685,
-# T1070.001 → T1685.005 — the enum-constrained mapper cannot emit retired
-# ids, and an external reviewer with pre-v19 knowledge will wrongly call
-# T1685.005 a hallucination; it is "Clear Windows Event Logs" in v19.1).
+# OpenSlop (synthetic, `*OpenSlop.pdf`) — Windows-domain ransomware/exfil
+# intrusion authored specifically to stress recall: 12 tactics, many behaviors
+# phrased in plain prose without signal words (Kerberoasting never named in
+# §4.4, masquerading only implied by the fake task name). Two labels are
+# translated from pre-v19 ids to the bundled v19.1 catalog (T1562.001 →
+# T1685, T1070.001 → T1685.005 — the enum-constrained mapper cannot emit
+# retired ids; T1685.005 is "Clear Windows Event Logs" in v19.1).
 # ---------------------------------------------------------------------------
 
 _OPENSLOP_CORE: dict[str, str] = {
@@ -318,14 +314,13 @@ _OPENSLOP_ACCEPTABLE: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# Confluence Exploit Leads to LockBit Ransomware (The DFIR Report, 21) — REAL report, EXTERNAL ground truth.
-# Labels are DFIR's own published ATT&CK table transcribed verbatim (v19.1;
-# all ids validated against the bundled KB), not a reading of the narrative —
-# this is the registry's only non-circular reference. Chosen by rank-stratified
-# sampling over the 10-report corpus (0.762, stratum 1 of 3 (upper)), not by result.
-# `deleak=True`: the report ends with that same table, so it is stripped before
-# ingest — otherwise the harness measures table-reading, not mapping (measured
-# 2026-09-02: leaving it in inflates corpus exact recall 0.549 -> 0.584).
+# Confluence Exploit Leads to LockBit Ransomware (The DFIR Report, 21) — REAL
+# report, EXTERNAL ground truth. Labels are DFIR's own published ATT&CK table
+# transcribed verbatim (v19.1; all ids validated against the bundled KB), not
+# a reading of the narrative — this is the registry's only non-circular
+# reference. `deleak=True`: the report ends with that same table, so it is
+# stripped before ingest, otherwise the harness measures table-reading, not
+# mapping.
 # ---------------------------------------------------------------------------
 
 _DFIR_LOCKBIT_CORE: dict[str, str] = {
@@ -366,14 +361,12 @@ _DFIR_LOCKBIT_ACCEPTABLE: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# Hide Your RDP: Password Spray Leads to RansomHub (The DFIR Report, 29) — REAL report, EXTERNAL ground truth.
-# Labels are DFIR's own published ATT&CK table transcribed verbatim (v19.1;
-# all ids validated against the bundled KB), not a reading of the narrative —
-# this is the registry's only non-circular reference. Chosen by rank-stratified
-# sampling over the 10-report corpus (0.586, stratum 2 of 3 (middle)), not by result.
-# `deleak=True`: the report ends with that same table, so it is stripped before
-# ingest — otherwise the harness measures table-reading, not mapping (measured
-# 2026-09-02: leaving it in inflates corpus exact recall 0.549 -> 0.584).
+# Hide Your RDP: Password Spray Leads to RansomHub (The DFIR Report, 29) —
+# REAL report, EXTERNAL ground truth. Labels are DFIR's own published ATT&CK
+# table transcribed verbatim (v19.1; all ids validated against the bundled
+# KB), not a reading of the narrative. `deleak=True`: the report ends with
+# that same table, so it is stripped before ingest, otherwise the harness
+# measures table-reading, not mapping.
 # ---------------------------------------------------------------------------
 
 _DFIR_RANSOMHUB_CORE: dict[str, str] = {
@@ -423,12 +416,9 @@ _DFIR_RANSOMHUB_ACCEPTABLE: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # BengalSEO Part 1 (The DFIR Report, 18) — REAL report, EXTERNAL ground truth.
 # Labels are DFIR's own published ATT&CK table transcribed verbatim (v19.1;
-# all ids validated against the bundled KB), not a reading of the narrative —
-# this is the registry's only non-circular reference. Chosen by rank-stratified
-# sampling over the 10-report corpus (0.333, stratum 3 of 3 (lower)), not by result.
-# `deleak=True`: the report ends with that same table, so it is stripped before
-# ingest — otherwise the harness measures table-reading, not mapping (measured
-# 2026-09-02: leaving it in inflates corpus exact recall 0.549 -> 0.584).
+# all ids validated against the bundled KB), not a reading of the narrative.
+# `deleak=True`: the report ends with that same table, so it is stripped
+# before ingest, otherwise the harness measures table-reading, not mapping.
 # ---------------------------------------------------------------------------
 
 _DFIR_BENGALSEO_CORE: dict[str, str] = {

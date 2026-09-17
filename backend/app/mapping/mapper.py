@@ -552,16 +552,11 @@ def _run_verification(
         # A passage that cites this exact id inline (`[T1685.005]`) is the
         # strongest evidence class this pipeline recognizes elsewhere —
         # EXPLICIT_IDS injection in retrieve.py seats a cited id above any
-        # retrieval score for exactly this reason. The verification judge
-        # doesn't know that and can reject it anyway (measured 2026-09-05 on
-        # 3 real DFIR Report intrusions under the current independent+demote
-        # default: 16 mappings demoted despite being in DFIR's own table, and
-        # several of the judge's own stated reasons for OTHER mappings read
-        # "Explicitly cited ATT&CK id [...]" — the model sees the citation,
-        # the judge overrules it anyway). Skip judging when the source chunk
-        # literally cites this mapping's own id, scanning the chunk text
-        # (not the model's evidence quote) so this doesn't depend on
-        # quoting behavior, same source EXPLICIT_IDS itself reads.
+        # retrieval score for exactly this reason — but the verification
+        # judge doesn't know that and can reject it anyway. Skip judging when
+        # the source chunk literally cites this mapping's own id, scanning
+        # the chunk text (not the model's evidence quote) so this doesn't
+        # depend on quoting behavior, same source EXPLICIT_IDS itself reads.
         cited_ids = {mm.group(0).upper() for mm in ATTACK_ID_RE.finditer(chunk_text[m.chunk_id])}
         if m.technique_id.upper() in cited_ids:
             return m

@@ -2,24 +2,17 @@
 pymupdf's text layer cannot see — see CLAUDE.md's Known limitations.
 
 Retrieval-only by design: OCR'd text is appended to the markdown so it can be
-embedded and BM25-matched like any other content, widening which chunks get
-offered as mapping candidates. It deliberately is NOT specially exempted from
-the mapper's verbatim evidence-quote gate (`_evidence_context` in mapper.py) —
-spot-checked against real DFIR Report screenshots (2026-09-04): well-OCR'd
-lines (Sysmon/EDR log tables, monospace, high-contrast) came through close to
-verbatim, so the existing three-tier quote gate already does the right thing —
-a badly garbled OCR line simply won't validate as a quote and the mapping is
-correctly rejected on that basis, no separate mechanism needed. Two measured
-failure modes stay real regardless of gating: black redaction boxes make
-content genuinely unrecoverable (not an OCR defect), and yellow highlight
-overlays on the exact command-name tokens (`nltest`, `net`) OCR'd
-inconsistently — masked in practice by column redundancy in EDR-table
-screenshots (the same tool name repeats in an adjacent, cleanly-OCR'd
-`process.executable` column), not by anything this module does.
+embedded and BM25-matched like any other content. It is NOT exempted from the
+mapper's verbatim evidence-quote gate (`_evidence_context` in mapper.py) —
+well-OCR'd text (Sysmon/EDR log tables, monospace, high-contrast) comes
+through close to verbatim, so a badly garbled OCR line simply fails to
+validate as a quote and is correctly rejected on its own. Two failure modes
+stay unrecoverable regardless of gating: black redaction boxes (genuinely
+unreadable, not an OCR defect) and yellow highlight overlays on command-name
+tokens, which OCR inconsistently — usually masked by column redundancy in
+EDR-table screenshots (the same tool name repeats in an adjacent column).
 
-Degrades to a no-op if `tesseract` isn't installed (new system dependency,
-needs a Docker image rebuild — see backend/Dockerfile) so ingest keeps working
-unchanged until that rebuild happens.
+Degrades to a no-op if `tesseract` isn't installed (see backend/Dockerfile).
 """
 
 import logging
@@ -47,9 +40,7 @@ except ImportError:
 # and terminal screenshots.
 OCR_DPI = 300
 
-# Skip images too small to hold meaningful text (icons, bullets, logos) —
-# cheap insurance; the DFIR corpus's real figures were all comfortably above
-# this (measured 2026-09-03: 43-79 real images/report, all screenshot-scale).
+# Skip images too small to hold meaningful text (icons, bullets, logos).
 MIN_DIM_PT = 60
 
 # Quality gate, same spirit as repair_ligatures(): reject OCR output that's
@@ -60,19 +51,12 @@ MIN_CHARS = 20
 MIN_ALNUM_RATIO = 0.4
 _ALNUM_RE = re.compile(r"[A-Za-z0-9]")
 
-# pytesseract shells out to the tesseract binary per call (subprocess, not an
-# in-process binding), so a thread pool gives real OS-level parallelism.
-# LOW ON PURPOSE, not os.cpu_count() — measured empirically (2026-09-04, 16
-# physical cores, sweeping 1/2/4/8/16 external workers with a fixed 24-image
-# sample): 1 worker -> 0.56s/image, 2 -> 0.32s/image (best), 4 -> 0.35s/image
-# (already flat), 8/16 unambiguously worse. Tesseract's own LSTM engine is
-# internally multi-threaded per call, so external concurrency beyond ~2-3
-# oversubscribes the same cores rather than adding real throughput — this
-# is tesseract fighting itself, not a GIL or I/O effect. Confirmed the wrong
-# fix too: capping tesseract's internal threads (OMP_THREAD_LIMIT=1) to allow
-# a wider external pool made every worker count measured WORSE (workers=4
-# went 0.35s/image -> 0.83s/image), so don't do that either — let each call
-# use its own internal parallelism and keep the external pool small.
+# pytesseract shells out to the tesseract binary per call, so a thread pool
+# gives real OS-level parallelism. LOW ON PURPOSE, not os.cpu_count(): each
+# tesseract call is already internally multi-threaded, so stacking more than
+# ~2-3 external workers oversubscribes the same cores instead of adding
+# throughput (measured worse at 8/16; capping tesseract's own threads to
+# allow a wider pool was also tried and measured worse still).
 MAX_OCR_WORKERS = 3
 
 

@@ -38,22 +38,10 @@ GUIDANCE_RE = re.compile(
     r"|lessons learned|post-incident|action plan|action items|next steps"
     r"|best practice|hardening|how to protect|prevention|defensive measures"
     r"|protective measures|detection opportunit|hunting quer|sigma rule|yara rule"
-    # REJECTED 2026-09-03 (tried and reverted — see CLAUDE.md's "Detection-
-    # section boilerplate" note): classifying "Detections"/"Sigma"/"Diamond
-    # Model"/"Timeline Indicators" headings as guidance was tested on 3 real
-    # de-leaked DFIR Report intrusions, both verdict modes. It cut FPs
-    # meaningfully on 1 of 3 (rdp-ransomhub: unexpected/run 34.8->29.8 under
-    # menu) but cost real recall on another (confluence-lockbit: exact recall
-    # 71.4%->63.1% under menu, 71.4%->67.9% under independent) — below this
-    # project's own 2-of-3 bar for keeping a change. Root cause confirmed, not
-    # assumed: T1059.003 and T1003.001 flipped from solid hits to misses even
-    # though their evidence (mimikatz x12, lsass x2) survives untouched in the
-    # narrative — removing ~10 chunks of Sigma/Detections text reshuffled
-    # chunk boundaries for unrelated spans, the same composition-sensitivity
-    # mechanism cycles 5b/7/12 already measured. If revisited: try demoting
-    # these sections' evidence weight at the VERDICT stage instead of
-    # removing the chunks from indexing entirely, since the ingest-time
-    # removal is what perturbs unrelated chunk boundaries.
+    # NOTE: classifying "Detections"/"Sigma"-style headings as guidance too was
+    # tried and reverted — it cut some false positives but cost real recall by
+    # reshuffling chunk boundaries for unrelated spans. See CLAUDE.md's
+    # "Detection-section boilerplate" note before retrying this.
     # Response-phase communication/notification sections (stakeholder
     # notifications, breach disclosure). The bare forms match only as a whole
     # heading, so "C2 Communications" stays content.
