@@ -4,8 +4,6 @@ Trabajo de Fin de Máster (César Guillén Cuñat). A locally-run, Dockerized to
 
 **Fully local**: everything (parsing, retrieval, LLM) runs on-premise via Docker. No uploaded report data is ever sent to an external/cloud API.
 
-See [CLAUDE.md](CLAUDE.md) for the full architecture/pipeline description and development guidelines.
-
 ## Status
 
 The whole pipeline works end-to-end:
