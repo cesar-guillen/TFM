@@ -203,7 +203,7 @@ docker compose version        # must say v2.x
 
 4. Get the project
 ```
-git clone <your-repo-url> TFM
+git clone https://github.com/cesar-guillen/TFM.git
 cd TFM
 ```
 
