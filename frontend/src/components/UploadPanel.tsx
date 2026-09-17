@@ -6,6 +6,7 @@ import {
   type VerdictMode,
   type VerifyMode,
 } from "../api/client";
+import { useWarmup } from "../hooks/useWarmup";
 
 // Mirrors MAX_UPLOAD_BYTES in the backend's ingest route, so an oversized file
 // is refused before it is uploaded rather than after.
@@ -47,11 +48,20 @@ const OCR_MODE_HINTS: Record<OcrMode, string> = {
 // Balanced on exact F1 and precision on 3 of 3 reports, directly fixing a
 // user-reported miss on AD/Discovery techniques (local group/account
 // enumeration, DCSync) under the old default — see verdict_mode in
-// backend/app/core/config.py for the full numbers. Keep both in sync with
-// their backend settings. Report type has no recommendation — it depends on
-// the document.
+// backend/app/core/config.py for the full numbers. Keep in sync with the
+// backend setting. Report type has no recommendation — it depends on the
+// document.
 const RECOMMENDED_VERIFY: VerifyMode = "demote";
-const RECOMMENDED_VERDICT: VerdictMode = "independent";
+
+// Individual is the general recommendation, but it issues one LLM call per
+// candidate instead of one per chunk — on a CPU profile, where every call is
+// already far slower, that gap compounds into a much longer run for a recall
+// gain that matters less when the user is already trading quality for
+// hardware compatibility. Grouped is recommended on CPU for that reason; GPU
+// (or before the device is known) keeps the general recommendation.
+function recommendedVerdictFor(device: "gpu" | "cpu" | null | undefined): VerdictMode {
+  return device === "cpu" ? "menu" : "independent";
+}
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -139,6 +149,12 @@ export default function UploadPanel({
   const [dragOver, setDragOver] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Only polls while this dialog is open — long enough to learn the device
+  // for the recommendation below, without polling /api/warmup in the
+  // background for the whole time the dashboard sits idle.
+  const warmup = useWarmup(pendingFile !== null);
+  const recommendedVerdict = recommendedVerdictFor(warmup?.device);
 
   function stageFile(files: FileList | null) {
     const file = files?.[0];
@@ -290,21 +306,31 @@ export default function UploadPanel({
                 value={verdictMode}
                 onChange={onVerdictModeChange}
                 hint={VERDICT_MODE_HINTS[verdictMode]}
-                recommended={{ value: RECOMMENDED_VERDICT, label: "Individual" }}
+                recommended={{
+                  value: recommendedVerdict,
+                  label: recommendedVerdict === "menu" ? "Grouped" : "Individual",
+                }}
               />
             )}
 
             {onOcrEnabledChange && (
-              <OptionPicker
-                title="Read text in screenshots"
-                options={[
-                  { value: "on", label: "On" },
-                  { value: "off", label: "Off" },
-                ]}
-                value={ocrEnabled ? "on" : "off"}
-                onChange={(value) => onOcrEnabledChange(value === "on")}
-                hint={OCR_MODE_HINTS[ocrEnabled ? "on" : "off"]}
-              />
+              <>
+                <OptionPicker
+                  title="Read text in screenshots"
+                  options={[
+                    { value: "on", label: "On" },
+                    { value: "off", label: "Off" },
+                  ]}
+                  value={ocrEnabled ? "on" : "off"}
+                  onChange={(value) => onOcrEnabledChange(value === "on")}
+                  hint={OCR_MODE_HINTS[ocrEnabled ? "on" : "off"]}
+                />
+                {ocrEnabled && (
+                  <div className="badge badge-warning" style={{ width: "fit-content" }}>
+                    ⚠ OCR finds more chunks to map, which means a bigger matrix and a longer run — roughly 15-30s more just for OCR itself, plus whatever mapping that extra evidence adds.
+                  </div>
+                )}
+              </>
             )}
 
             {error && (

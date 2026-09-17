@@ -16,7 +16,7 @@ CLAUDE.md
 
 # Thesis LaTeX source (Overleaf is the source of truth, not this repo)
 thesis/
-
+entrega_final/
 # Runtime data (Docker volumes / pipeline outputs)
 data/uploads/*
 !data/uploads/.gitkeep
