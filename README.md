@@ -184,17 +184,21 @@ docker compose version        # must say v2.x
 ```
 4. Get the project
 ```
-git clone <your-repo-url> TFM
+git clone https://github.com/cesar-guillen/TFM.git
 cd TFM
 ```
 5. Launch: pick ONE profile for the machine
 
 # No GPU, more than 8 GB RAM (the usual case):
+```
 docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
-
+```
 # No GPU, 8 GB RAM or less:
+```
 docker compose -f docker-compose.yml -f docker-compose.basic.yml up -d --build
-
+```
 # NVIDIA GPU (needs step 7 first):
+```
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
 
